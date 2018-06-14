@@ -112,7 +112,6 @@ def scale_tensor(input,max_scaling=2,plot=False):
         y_scale_real[i]=y_scale
         new_size=[round_even(28*y_scale),round_even(28*x_scale)]
         assert (new_size[0]>=14  and new_size[1]>=14), (x_scale,x_scale_pi[i], y_scale,y_scale_pi[i])
-        #import pdb; pdb.set_trace()
         # Resize image 
         #tranpose input image to [h,w,c]
         channels=input.shape[1]
@@ -356,7 +355,6 @@ def final_test(args,model,device,test_loader):
             params_ry=torch.cat((zeros,scale,angles),1)
             params_rxy=torch.cat((scale,scale,angles),1)
             params=torch.cat((params_x,params_y,params_r,params_xy,params_rx,params_ry,params_rxy),0)
-            import pdb; pdb.set_trace()
 
             # Forward pass
             data = data.to(device)
