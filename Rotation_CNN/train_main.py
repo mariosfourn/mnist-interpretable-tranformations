@@ -15,60 +15,12 @@ from matplotlib import pyplot as plt
 from scipy.ndimage.interpolation import rotate
 from torchvision import datasets, transforms
 
+from model import Net
 
-class Net(nn.Module):
-    def __init__(self, height, width, device):
-        super(Net, self).__init__()
-
-        self.height = height
-        self.width = width
-        self.device = device
-
-        # Init model layers
-        self.down1 = nn.Linear(self.height*self.width, 510)
-        self.down2 = nn.Linear(510, 510)
-        self.down3 = nn.Linear(510, 510)
-        self.up3 = nn.Linear(510, 510)
-        self.up2 = nn.Linear(510, 510)
-        self.up1 = nn.Linear(510, self.height*self.width)
-
-
-    def forward(self, x, params):
-        x = F.relu(self.down1(x))
-        x = F.relu(self.down2(x))
-        x = self.down3(x)   # Must be linear layer!
-
-        # Feature transform layer
-        x = self.feature_transformer(x, params)
-
-        x = F.relu(self.up3(x))
-        x = F.relu(self.up2(x))
-        return F.sigmoid(self.up1(x))   # Sigmoid output for MNIST
-
-
-    def feature_transformer(self, input, params):
-        """For now we assume the params are just a single rotation angle
-
-        Args:
-            input: [N,c] tensor, where c = 2*int
-            params: [N,1] tensor, with values in [0,2*pi)
-        Returns:
-            [N,c] tensor
-        """
-        # First reshape activations into [N,c/2,2,1] matrices
-        x = input.view(input.size(0),input.size(1)/2,2,1)
-        # Construct the transformation matrix
-        sin = torch.sin(params)
-        cos = torch.cos(params)
-        transform = torch.cat([sin, -cos, cos, sin], 1)
-        transform = transform.view(transform.size(0),1,2,2).to(self.device)
-        # Multiply: broadcasting taken care of automatically
-        # [N,1,2,2] @ [N,channels/2,2,1]
-        output = torch.matmul(transform, x)
-        # Reshape and return
-        return output.view(input.size())
-
-
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+         nn.init.xavier_normal_(m.weight)
 
 
 def rotate_tensor(input,plot=False):
@@ -123,7 +75,7 @@ def rotate_tensor(input,plot=False):
     return outputs, angles
 
 
-def save_model(model,epoch):
+def save_model(args,model,epoch):
     """
     saves a checkpoint so that model weight can later be used for inference
     Args:
@@ -133,7 +85,10 @@ def save_model(model,epoch):
     import os
     if not os.path.exists('./model/'):
       os.mkdir('./model/')
-    torch.save(model.state_dict(), './model/ckpoint_epoch_{}'.format(epoch))
+    if (epoch % 5==0 and epoch!= args.epochs):
+        torch.save(model.state_dict(), './model/checkpoint_epoch_{}.pt'.format(epoch))
+    if epoch==args.epochs:
+        torch.save(model.state_dict(), './model/final_model.pt')
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -142,10 +97,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
         # Reshape data
         targets, angles = rotate_tensor(data.numpy())
         targets = torch.from_numpy(targets).to(device)
-        targets = targets.view(targets.size(0), -1)
         angles = torch.from_numpy(angles).to(device)
         angles = angles.view(angles.size(0), 1)
-        data = data.view(data.size(0), -1)
 
         # Forward pass
         data = data.to(device)
@@ -154,6 +107,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         # Binary cross entropy loss
         loss_fnc = nn.BCELoss(size_average=False)
+        #Add regularisation for l
         loss = loss_fnc(output, targets)
 
         # Backprop
@@ -164,6 +118,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 .format(epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
             sys.stdout.flush()
+    #Save model
+    save_model(args,model,epoch)
 
 
 def test(args, model, device, test_loader, epoch):
@@ -174,6 +130,7 @@ def test(args, model, device, test_loader, epoch):
             # repeat
             data = data.view(data.size(0), -1)
             data = data.repeat(args.test_batch_size,1)
+            data = data.view(args.test_batch_size**2,1, 28,28)
 
             angles = torch.linspace(0, 2*np.pi, steps=args.test_batch_size)
             angles = angles.view(args.test_batch_size, 1)
@@ -186,7 +143,6 @@ def test(args, model, device, test_loader, epoch):
             output = model(data, angles)
             break
         output = output.cpu()
-        output = output.view(-1,1,28,28)
         save_images(output, epoch)
 
 
@@ -227,6 +183,7 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+  
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -249,14 +206,15 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     # Init model and optimizer
-    model = Net(28,28,device).to(device)
+    model = Net(device).to(device)
+    #Initialise weights
+    model.apply(weights_init)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # Where the magic happens
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader, epoch)
-
 
 if __name__ == '__main__':
     # Create save path
