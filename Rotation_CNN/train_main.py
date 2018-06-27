@@ -90,7 +90,6 @@ def save_model(args,model,epoch):
     if epoch==args.epochs:
         torch.save(model.state_dict(), './model/final_model.pt')
 
-
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -183,6 +182,9 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--lamda', type=float, default=0.2,,
+                        help='regularising term for loss')
+
   
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
@@ -202,7 +204,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=False, transform=transforms.Compose([
                            transforms.ToTensor()
-                       ])),
+                  .     ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     # Init model and optimizer
