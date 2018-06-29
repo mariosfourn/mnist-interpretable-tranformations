@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 from scipy.ndimage.interpolation import rotate
 from torchvision import datasets, transforms
 
-from model import Net_Reg
+from model import Net_Reg, Angle_Discriminator
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -23,7 +23,7 @@ def weights_init(m):
          nn.init.xavier_normal_(m.weight)
 
 
-def rotate_tensor(input,plot=False):
+def rotate_tensor(input,rot_range=2*np.pi,plot=False):
     """Nasty hack to rotate images in a minibatch, this should be parallelized
     and set in PyTorch
 
@@ -32,7 +32,7 @@ def rotate_tensor(input,plot=False):
     Returns:
         rotated output and angles in radians
     """
-    angles = 2*np.pi*np.random.rand(input.shape[0])
+    angles = rot_range*np.random.rand(input.shape[0])
     angles = angles.astype(np.float32)
     outputs = []
     for i in range(input.shape[0]):
@@ -83,78 +83,19 @@ def save_model(args,model,epoch):
     epoch:  trainign epoch
     """
 
-    filepath='./model_reg'
+    path='./model_lambda_{}'.format(args.regulariser)
     import os
-    if not os.path.exists(filepath):
-      os.mkdir(filepath)
-    #if (epoch % 1==0 and epoch!= args.epochs):
-    torch.save(model.state_dict(), './model_reg/checkpoint.pt')
+    if not os.path.exists(path):
+      os.mkdir(path)
+    if (epoch % 1==0):
+        torch.save(model.state_dict(), path+'/checkpoint.pt')
 
 
-
-class Reg_Loss(nn.Module):
-    
-    def __init__(self):
-        super(Reg_Loss,self).__init__()
-        
-    def forward(self,x,y):
-        """
-        regulariser for loss
-
-        Args:
-            x: [batch,1,ndims]
-            y: [batch,1,ndims]
-        """
-        x=x.view(x.shape[0],-1)
-        y=y.view(y.shape[0],-1)
-        ndims=x.shape[1]
-        batch_size=x.shape[0]
-        reg_loss=0.0
-        for i in range(0,ndims-1,2):
-            x_i=x[:,i:i+2]
-            y_i=y[:,i:i+2]
-            dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
-            x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
-            y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+= torch.sum(dot_prod/(x_norm*y_norm))
-        return reg_loss
-
-def train(args, model, device, train_loader, optimizer, epoch):
-    model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        # Reshape data
-        targets, angles = rotate_tensor(data.numpy())
-        targets = torch.from_numpy(targets).to(device)
-        angles = torch.from_numpy(angles).to(device)
-        angles = angles.view(angles.size(0), 1)
-
-        # Forward pass
-        data = data.to(device)
-        optimizer.zero_grad()
-        output, f_data, f_targets = model(data, targets,angles) #for feature vector
-
-        # Binary cross entropy loss
-        loss_fnc = nn.BCELoss(size_average=False)
-        loss_reg =Reg_Loss()
-        #Add 
-        loss = loss_fnc(output, targets)+args.regulariser* loss_reg(f_data,f_targets)
-
-        # Backprop
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
-                .format(epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
-            sys.stdout.flush()
-    #Save model
-    save_model(args,model,epoch)
-
-
-def test(args, model, device, test_loader, epoch):
-    if args.test:
-        #Load saved model
-        model.load_state_dict('./model_reg/checkpoint.pt')
+def reconstruction_test(args, model, device, test_loader, epoch):
+    # if args.test:
+    #     #Load saved model
+    #     path='./model_lambda_{}'.format(args.regulariser)
+    #     model.load_state_dict(path+'/checkpoint.pt')
     model.eval()
     with torch.no_grad():
         for data, target in test_loader:
@@ -177,10 +118,68 @@ def test(args, model, device, test_loader, epoch):
             output,_,_ = model(data, target, angles)
             break
         output = output.cpu()
-        save_images(output, epoch)
+        save_images(args,output, epoch)
+
+def rotation_test(args, model, device, test_loader):
+    """
+    Test how well the eoncoder discrimates angles
+    return the average error in degrees
+    """
+    model.eval()
+    average_error=0.0 #in degrees
+    with torch.no_grad():
+        for data, target in test_loader:
+            #Get rotated vector
+            #angles = np.linspace(0,np.pi,test_loader.batch_size)
+            target,angles = rotate_tensor(data.numpy(),np.pi,plot=False)
+            data=data.to(device)
+            target = torch.from_numpy(target).to(device)
+            
+            #Forward pass for data and targer
+            angles_estimate=model(data,target)
+            angles_estimate=angles_estimate.cpu() #in degrees
+            average_error+=np.sum((angles*180/np.pi)-angles_estimate.numpy())/len(test_loader.dataset)
+    return average_error
 
 
-def save_images(images, epoch, nrow=None):
+def plot_learning_curve(args,recon_train_loss,regulariser_train_loss,rotation_loss):
+    """
+    Plots learning curves at the end of traning
+    """
+    total_loss=recon_train_loss+args.regulariser*regulariser_train_loss
+    x_ticks1=np.arange(len(recon_train_loss))*args.store_interval
+
+    fig, ax1=plt.subplots()
+    color='tab:red'
+    lns1=ax1.plot(x_ticks1,recon_train_loss,label='Training Reconstrunction Loss (BCE)')
+    lns2=ax1.plot(x_ticks1,regulariser_train_loss,label='Training Rotation disrcimination loss')
+    lns3=ax1.plot(x_ticks1,total_loss,'-.',color=color,label='Total Training Loss')
+    ax1.set_xlabel('Training Examples')
+    ax1.set_ylabel('Loss', color=color)
+    ax1.tick_params(axis='y', colors= color)
+
+    color = 'tab:green'
+    ax2 = ax1.twinx()
+    lns4=ax2.plot(x_ticks1,rotation_loss,color=color,label='Average test rotation loss')
+    ax2.set_ylabel('Degrees',color=color)
+    ax2.tick_params(axis='y', colors= color)
+    ax2
+
+    #Legend
+    lns = lns1+lns2+lns3+lns4
+    labs = [l.get_label() for l in lns]
+    ax1.legend(lns, labs, loc=0)
+    ax1.grid(True)
+    ax2.set_ylim([-360,360])
+    plt.title(r'Learning Curves with $\lambda$={}'.format(args.regulariser))
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+
+    path = "./output_lambda_{}".format(args.regulariser)
+    fig.savefig(path+'/learning_curves')
+    fig.clf()
+
+
+def save_images(args,images, epoch, nrow=None):
     """Save the images in a grid format
 
     Args:
@@ -194,8 +193,111 @@ def save_images(images, epoch, nrow=None):
 
     plt.figure()
     plt.imshow(img)
-    plt.savefig("./output_reg/epoch{:04d}".format(epoch))
+    path = "./output_lambda_{}".format(args.regulariser)
+    plt.savefig(path+"/epoch{:04d}".format(epoch))
     plt.close()
+
+def copy_weights(model1,model2):
+    """
+    Copies weigths from one model to the other(from model1 to model2)
+    model2 must be contained wihitn model1
+    """
+    model1_dict=model1.state_dict()
+    model2_dict = model2.state_dict()
+    # 1. filter out unnecessary keys
+    model1_dict = {k: v for k, v in model1_dict.items() if k in model2_dict}
+    # 2. overwrite entries in the existing state dict
+    model2_dict.update(model1_dict) 
+    # 3. load the new state dict
+    model2.load_state_dict(model1_dict)
+
+    return model2
+
+
+
+class Reg_Loss(nn.Module):
+    
+    def __init__(self,size_average=False):
+        super(Reg_Loss,self).__init__()
+        self.size_average=size_average
+        
+    def forward(self,x,y):
+        """
+        regulariser for loss
+
+        Args:
+            x: [batch,1,ndims]
+            y: [batch,1,ndims]
+        """
+        x=x.view(x.shape[0],-1)
+        y=y.view(y.shape[0],-1)
+        ndims=x.shape[1]
+        batch_size=x.shape[0]
+        reg_loss=0.0
+        for i in range(0,ndims-1,2):
+            x_i=x[:,i:i+2]
+            y_i=y[:,i:i+2]
+            dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
+            x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
+            y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
+            reg_loss+= torch.sum(dot_prod/(x_norm*y_norm))
+        if self.size_average:
+            reg_loss=reg_loss/x.shape[0]/(ndims//2)
+        return reg_loss
+
+
+def reg_loss(args,output,targets,f_data,f_targets):
+    """
+    Define regularised loss
+    """
+
+    # Binary cross entropy loss
+    loss_fnc = nn.BCELoss(size_average=True)
+    loss_reg =Reg_Loss(size_average=True)
+    #Add 
+    reconstruction_loss=loss_fnc(output,targets)
+    rotation_loss=loss_reg(f_data,f_targets)
+    total_loss= reconstruction_loss+args.regulariser*rotation_loss
+    return total_loss,reconstruction_loss,rotation_loss
+
+
+# def train(args, model, device, train_loader, optimizer, epoch):
+#     model.train()
+#     for batch_idx, (data, target) in enumerate(train_loader):
+#         # Reshape data
+#         targets, angles = rotate_tensor(data.numpy())
+#         targets = torch.from_numpy(targets).to(device)
+#         angles = torch.from_numpy(angles).to(device)
+#         angles = angles.view(angles.size(0), 1)
+
+#         # Forward pass
+#         data = data.to(device)
+#         optimizer.zero_grad()
+#         output, f_data, f_targets = model(data, targets,angles) #for feature vector
+
+#         #Gry loss
+#         loss,reconstruction_loss,rotation_loss=eg_loss(args,data,targets,f_data,f_targets)
+#         # Backprop
+#         loss.backward()
+#         optimizer.step()
+
+#         #Log progress
+#         if batch_idx % args.log_interval == 0:
+#             sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
+#                 .format(epoch, batch_idx * len(data), len(train_loader.dataset),
+#                 100. * batch_idx / len(train_loader), loss.item()))
+#             sys.stdout.flush()
+
+#         #Store training loss
+#         counter=0
+#         if batch_idx % args.store_interval==0:
+#             loss_log[counter]=[reconstruction_loss.item(),rotation_loss.item()]
+#             counter+=1
+#             break
+#     #Save model
+#     save_model(args,model,epoch)
+
+#     return loss_log
 
 
 def main():
@@ -204,7 +306,9 @@ def main():
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
-                        help='input batch size for testing (default: 10)')
+                        help='input batch size for reconstruction testing (default: 10)')
+    parser.add_argument('--test-batch-size-disc', type=int, default=500, metavar='N',
+                        help='input batch size for rotation disrcimination testing (default: 1,000)')
     parser.add_argument('--epochs', type=int, default=100, metavar='N',
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
@@ -217,11 +321,18 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--store-interval', type=int, default=100, metavar='N',
+                        help='how many batches to wait before storing training loss')
     parser.add_argument('--regulariser',type=float, default=0.1, metavar='Lambda',
                         help='regularising constant (default=0.1)')
-    parser.add_argument('--test',action='store_true',default=False,help='set true only inference is needed using saved model')
   
     args = parser.parse_args()
+
+    # Create save path
+    path = "./output_lambda_{}".format(args.regulariser)
+    if not os.path.exists(path):
+        os.makedirs(path)
+
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
@@ -236,29 +347,92 @@ def main():
                            transforms.ToTensor()
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
+
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=False, transform=transforms.Compose([
                            transforms.ToTensor()
                        ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
+    test_loader_disc = torch.utils.data.DataLoader(
+        datasets.MNIST('../data', train=False, transform=transforms.Compose([
+                           transforms.ToTensor()
+                       ])),
+        batch_size=args.test_batch_size_disc, shuffle=False, **{})
+
     # Init model and optimizer
-    model = Net_Reg(device).to(device)
+    model_autoencoder = Net_Reg(device).to(device)
+    model_encoder=Angle_Discriminator(device).to(device)
     #Initialise weights and train
-    if not args.test:
-        #Train
-        model.apply(weights_init)
-        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    path = "./output_lambda_{}".format(args.regulariser)
+  
+    #Initialise weights
+    model_autoencoder.apply(weights_init)
+    optimizer = optim.Adam(model_autoencoder.parameters(), lr=args.lr)
 
-        # Where the magic happens
-        for epoch in range(1, args.epochs + 1):
-            train(args, model, device, train_loader, optimizer, epoch)
-    #Test
-    test(args, model, device, test_loader, epoch)
+    # #Copy weights to Angle_Disciminator
+    # model_encoder=copy_weights(model_autoencoder,model_encoder)
 
+    #Get rotation loss in t
+    # rotation_test_loss=rotation_test(args, model_encoder, 'cpu', test_loader_disc)
+    rotation_test_loss=[]
+    recon_train_loss=[]
+    regulariser_train_loss=[]
+
+    # Where the magic happens
+    for epoch in range(1, args.epochs + 1):
+        model_autoencoder.train()
+        for batch_idx, (data, target) in enumerate(train_loader):
+            # Reshape data
+            targets, angles = rotate_tensor(data.numpy())
+            targets = torch.from_numpy(targets).to(device)
+            angles = torch.from_numpy(angles).to(device)
+            angles = angles.view(angles.size(0), 1)
+
+            # Forward pass
+            data = data.to(device)
+            optimizer.zero_grad()
+            output, f_data, f_targets = model_autoencoder(data, targets,angles) #for feature vector
+
+            #Gry loss
+            loss,reconstruction_loss,regulariser_loss=reg_loss(args,output,targets,f_data,f_targets)
+
+            # Backprop
+            loss.backward()
+            optimizer.step()
+
+            #Log progress
+            if batch_idx % args.log_interval == 0:
+                sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
+                    .format(epoch, batch_idx * len(data), len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader), loss.item()))
+                sys.stdout.flush()
+
+            #Store training and test loss
+            if batch_idx % args.store_interval==0:
+                #Train Lossq
+                recon_train_loss.append(reconstruction_loss.item())
+                regulariser_train_loss.append(regulariser_loss.item())
+
+                #Test Loss
+                #Copy weights to Angle_Disciminator
+                model_encoder=copy_weights(model_autoencoder,model_encoder)
+                rotation_test_loss.append(rotation_test(args, model_encoder, 'cpu', test_loader_disc))
+
+        #Save model
+        save_model(args,model_autoencoder,epoch)
+        #Save losses
+        np.save(path+'/recon_train_loss',np.array(recon_train_loss))
+        np.save(path+'/regulariser_train_loss',np.array(regulariser_train_loss))
+        np.save(path+'/rotation_test_loss',np.array(rotation_test_loss))
+        if epoch % 5==0:
+            #Test reconstruction by printing image
+            reconstruction_test(args, model_autoencoder, device, test_loader, epoch)
+    recon_train_loss=np.array(recon_train_loss)
+    regulariser_train_loss=np.array(regulariser_train_loss)
+    rotation_test_loss=np.array(rotation_test_loss)
+    plot_learning_curve(args,recon_train_loss,regulariser_train_loss,rotation_test_loss)
+
+ 
 if __name__ == '__main__':
-    # Create save path
-    path = "./output_reg"
-    if not os.path.exists(path):
-        os.makedirs(path)
     main()

@@ -143,7 +143,7 @@ class Angle_Discriminator(nn.Module):
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
             cos_angles+=dot_prod/(x_norm*y_norm)
         cos_angles=cos_angles/(ndims//2) # average
-        return (torch.acos(cos_angles)*180/np.pi) #turn into 
+        return (torch.acos(cos_angles)*180/np.pi) #turn into degrees
 
 
 
