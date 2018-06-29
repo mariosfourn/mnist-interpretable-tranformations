@@ -362,7 +362,7 @@ def main():
 
     # Init model and optimizer
     model_autoencoder = Net_Reg(device).to(device)
-    model_encoder=Angle_Discriminator(device).to(device)
+    model_encoder=Angle_Discriminator('cpu').to('cpu')
     #Initialise weights and train
     path = "./output_lambda_{}".format(args.regulariser)
   
