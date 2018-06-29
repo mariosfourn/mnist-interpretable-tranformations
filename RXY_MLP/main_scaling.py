@@ -364,7 +364,7 @@ def final_test(args,model,device,test_loader):
         output= output.view(-1,1,28,28)
 
         #Plot images
-        save_images(output, args.epochs,'final',nrow=7)
+        save_images(output, args.epochs,'final',nrow=20)
 
 
 def main():
@@ -386,6 +386,9 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--print-results', action='print_final', default=False, 
+                        help='Turn this flag on if training has finished and you just want to load \
+                        model and print final results')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -408,14 +411,21 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     # Init model and optimizer
-    model = Net(28,28,device).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    # Where the magic happens
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(args, model, device, test_loader, epoch)
-    final_test(args,model,device,test_loader)
+    if !args.print_results:
+        model = Net(28,28,device).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+        # Where the magic happens
+        for epoch in range(1, args.epochs + 1):
+            train(args, model, device, train_loader, optimizer, epoch)
+            test(args, model, device, test_loader, epoch)
+        final_test(args,model,device,test_loader)
+    else:
+        try:
+            os.path.isdir("./model")
+        except
+
 
 
 if __name__ == '__main__':
