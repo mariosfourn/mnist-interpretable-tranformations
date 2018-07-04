@@ -117,7 +117,7 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             target=target.to(device)
             output,_,_ = model(data, target, angles)
             break
-        output = output.cuda()
+        output = output.cpu()
         save_images(args,output, epoch)
 
 def rotation_test(args, model, device, test_loader):
@@ -137,7 +137,7 @@ def rotation_test(args, model, device, test_loader):
             
             #Forward pass for data and targer
             angles_estimate=model(data,target)
-            angles_estimate=angles_estimate.cuda() #in degrees
+            angles_estimate=angles_estimate.cpu() #in degrees
             average_error+=np.sum((angles*180/np.pi)-angles_estimate.numpy())/len(test_loader.dataset)
     return average_error
 
@@ -240,7 +240,7 @@ class Reg_Loss(nn.Module):
             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+= torch.sum(dot_prod/(x_norm*y_norm))
+            reg_loss+= (torch.sum(dot_prod/(x_norm*y_norm))-1)**2
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -361,7 +361,7 @@ def main():
         batch_size=args.test_batch_size_disc, shuffle=False, **{})
 
     # Init model and optimizer
-    model_autoencoder = Net_Retmuxg(device).to(device)
+    model_autoencoder = Net_Reg(device).to(device)
     model_encoder=Angle_Discriminator(device).to(device)
     #Initialise weights and train
     path = "./output_lambda_{}".format(args.regulariser)

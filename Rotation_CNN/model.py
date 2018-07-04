@@ -134,7 +134,7 @@ class Angle_Discriminator(nn.Module):
         y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
         ndims=x.shape[1]        # get dimensionality of feature space
         batch_size=x.shape[0]   # get batch_size
-        cos_angles=torch.zeros(batch_size,1)   
+        cos_angles=torch.zeros(batch_size,1).to(self.device)   
         for i in range(0,ndims-1,2):
             x_i=x[:,i:i+2]      
             y_i=y[:,i:i+2]
