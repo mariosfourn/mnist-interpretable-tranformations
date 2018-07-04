@@ -112,38 +112,38 @@ class Net_Reg(nn.Module):
         return x, f, f_theta
 
 
-class Angle_Discriminator(nn.Module):
-    def __init__(self, device):
-        super(Angle_Discriminator, self).__init__()
-        self.device=device
+# class Angle_Discriminator(nn.Module):
+#     def __init__(self, device):
+#         super(Angle_Discriminator, self).__init__()
+#         self.device=device
 
-        self.encoder=Encoder(self.device)
+#         self.encoder=Encoder(self.device)
 
-    def forward(self,x,y):
-        #Encoder 
-        f_x=self.encoder(x) #feature vector for x input
-        f_y=self.encoder(y) #feature vector for y input
-        return self.discriminator(f_x,f_y)
+#     def forward(self,x,y):
+#         #Encoder 
+#         f_x=self.encoder(x) #feature vector for x input
+#         f_y=self.encoder(y) #feature vector for y input
+#         return self.discriminator(f_x,f_y)
 
-    def discriminator(self,x,y):
-        """
-        Returns the angle between x and y feature vectors 
-        in degrees
-        """
-        x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
-        y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
-        ndims=x.shape[1]        # get dimensionality of feature space
-        batch_size=x.shape[0]   # get batch_size
-        cos_angles=torch.zeros(batch_size,1).to(self.device)   
-        for i in range(0,ndims-1,2):
-            x_i=x[:,i:i+2]      
-            y_i=y[:,i:i+2]
-            dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
-            x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
-            y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            cos_angles+=dot_prod/(x_norm*y_norm)
-        cos_angles=cos_angles/(ndims//2) # average
-        return (torch.acos(cos_angles)*180/np.pi) #turn into degrees
+#     def discriminator(self,x,y):
+#         """
+#         Returns the angle between x and y feature vectors 
+#         in degrees
+#         """
+#         x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
+#         y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
+#         ndims=x.shape[1]        # get dimensionality of feature space
+#         batch_size=x.shape[0]   # get batch_size
+#         cos_angles=torch.zeros(batch_size,1).to(self.device)   
+#         for i in range(0,ndims-1,2):
+#             x_i=x[:,i:i+2]      
+#             y_i=y[:,i:i+2]
+#             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
+#             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
+#             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
+#             cos_angles+=dot_prod/(x_norm*y_norm)
+#         cos_angles=cos_angles/(ndims//2) # average
+#         return (torch.acos(cos_angles)*180/np.pi) #turn into degrees
 
 
 
