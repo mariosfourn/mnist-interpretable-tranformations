@@ -23,64 +23,51 @@ def weights_init(m):
          nn.init.xavier_normal_(m.weight)
 
 
-def rotate_tensor(input,rot_range=np.pi, plot=False):
-    """
-    Rotate the image
+def rotate_tensor(input,rot_range=2*np.pi,plot=False):
+    """Nasty hack to rotate images in a minibatch, this should be parallelized
+    and set in PyTorch
+
     Args:
         input: [N,c,h,w] **numpy** tensor
-        rot_range: (scalar) the range of relative rotations
-        plot: (flag)    plot the original and rotated digits
     Returns:
-        outputs1 : input rotated by offset angle
-        output2:  input rotated by offset angle + relative angel [0, rot_range]
+        rotated output and angles in radians
     """
-    #Define offest angle of input
-    offset_angles=np.random.rand(input.shape[0])
-    offset_angles=offset_angle.astype(np.float32)
-
-    #Define relative angle
-    relative_angles=rot_range*np.random.rand(input.shape[0])
-    relative_angles=relative_angle.astype(np.float32)
-
-    outputs1=[]
-    outputs2=[]
+    angles = rot_range*np.random.rand(input.shape[0])
+    angles = angles.astype(np.float32)
+    outputs = []
     for i in range(input.shape[0]):
-        outputs1 = rotate(input[i,...], 180*offset_angles[i]/np.pi, axes=(1,2), reshape=False)
-        outputs2 = rotate(input[i,...], 180*(offset_angles[i]+relative_angles[i])/np.pi, axes=(1,2), reshape=False)
-        outputs1.append(outputs1)
-        outputs2.append(outputs2)
+        output = rotate(input[i,...], 180*angles[i]/np.pi, axes=(1,2), reshape=False)
+        outputs.append(output)
 
-    outputs1=np.stack(outputs1, 0)
-    outputs2=np.stack(outputs2, 0)
+    outputs=np.stack(outputs, 0)
 
     if plot:
-        #Create of output1 and outputs1
+        #Create a grid plot with original and scaled images
         N=input.shape[0]
         rows=int(np.floor(N**0.5))
         cols=N//rows
         plt.figure()
         for j in range(N):
             plt.subplot(rows,cols,j+1)
-            if outputs1.shape[1]>1:
-                image=outputs1[j].transpose(1,2,0)
+            if input.shape[1]>1:
+                image=input[j].transpose(1,2,0)
             else:
-                image=outputs1[j,0]
+                image=input[j,0]
 
             plt.imshow(image, cmap='gray')
             plt.grid(False)
-            plt.title(r'$\theta$={:.1f}'.format(offset_angles[j]*180/np.pi), fontsize=6)
             plt.axis('off')
         #Create new figure with rotated
         plt.figure(figsize=(7,7))
         for j in range(N):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
-                image=outputs2[j].transpose(1,2,0)
+                image=outputs[j].transpose(1,2,0)
             else:
-                image=outputs2[j,0]
+                image=outputs[j,0]
             plt.imshow(image, cmap='gray')
             plt.axis('off')
-            plt.title(r'$\theta$={:.1f}'.format( (offset_angles[i]+relative_angles[i])*180/np.pi), fontsize=6)
+            plt.title(r'$\theta$={:.1f}'.format( angles[j]*180/np.pi), fontsize=6)
             plt.grid(False)
         plt.tight_layout()      
         plt.show()
@@ -93,9 +80,10 @@ def save_model(args,model):
     saves a checkpoint so that model weight can later be used for inference
     Args:
     model:  pytorch model
+    epoch:  trainign epoch
     """
 
-    path='./model_'+args.name
+    path='./model'
     import os
     if not os.path.exists(path):
       os.mkdir(path)
@@ -119,7 +107,7 @@ def evaluate_model(model, device, data_loader):
             # Forward passes
             data = data.to(device)
             f_data=model(data) # [N,2,1,1]
-            f_targets=model(data) #[N,2,1,1]
+            f_targets=model(targets) #[N,2,1,1]
 
             #Apply rotatin matrix to f_data with feature transformer
             f_data_trasformed= feature_transformer(f_data,angles,device)
@@ -141,22 +129,20 @@ def rotation_test(model, device, test_loader):
         for data, target in test_loader:
             #Get rotated vector
             #angles = np.linspace(0,np.pi,test_loader.batch_size)
-            target,angles = rotate_tensor(data.numpy(),plot=False)
+            targets,angles = rotate_tensor(data.numpy(),plot=False)
             angles=angles.reshape(-1,1)
             data=data.to(device)
-            target = torch.from_numpy(target).to(device)
+            targets = torch.from_numpy(targets).to(device)
             
             #Get Feature vector for original and tranformed image
             f_data=model(data) # [N,2,1,1]
-            f_targets=model(data) #[N,2,1,1]
+            f_targets=model(targets) #[N,2,1,1]
 
             #Get cosine similarity
             f_data=f_data.view(f_data.size(0),1,2)
             f_targets=f_targets.view(f_targets.size(0),1,2)
 
             cosine_similarity=nn.CosineSimilarity(dim=2)
-
-            import ipdb; ipdb.set_trace()
 
             error=abs(cosine_similarity(f_data,f_targets).cpu().numpy()-np.cos(angles)).mean()
             break
@@ -183,35 +169,16 @@ def save_images(args,images, epoch, nrow=None):
     plt.close()
 
 
-def define_loss(args, x,y):
-    """
-    Return the loss based on the user's arguments
-
-    Args:
-        x:  [N,2,1,1]    output of encoder model
-        y:  [N,2,1,1]    output of encode model
-    """
-
-    if args.loss=='frobenius':
-        forb_distance=torch.nn.PairwiseDistance()
-        loss=(forb_distance(x.view(-1,2),y.view(-1,2))**2).sum()
-    elif args.loss=='cosine':
-        cosine_similarity=nn.CosineSimilarity(dim=2)
-        loss=((cosine_similarity(x.view(x.size(0),1,2),y.view(y.size(0),1,2))-1.0)**2).sum()
-
-    return loss
 
 def main():
     # Training settings
-    list_of_choices=['frobenius', 'cosine']
-
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
-                        help='input batch size for reconstruction testing (default: 10000)')
+    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
+                        help='input batch size for reconstruction testing (default: 10,000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N',
-                        help='number of epochs to train (default: 20)')
+                        help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                         help='learning rate (default: 0.001)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
@@ -224,19 +191,8 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--store-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before storing training loss')
-    parser.add_argument('--name', type=str, default='',
-                        help='name of the run that is added to the output directory')
-    parser.add_argument("--loss",dest='loss',default='frobenius',
-    choices=list_of_choices, help='Decide type of loss, (frobenius) norm, difference of (cosine), (default=forbenius)')
-
-    
   
     args = parser.parse_args()
-
-    # Create save path
-    path = "./output_"+args.name
-    if not os.path.exists(path):
-        os.makedirs(path)
 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -257,7 +213,7 @@ def main():
         datasets.MNIST('../data', train=False, transform=transforms.Compose([
                            transforms.ToTensor()
                        ])),
-        batch_size=args.test_batch_size, shuffle=True, **kwfargs)
+        batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     train_loader_eval = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=True, transform=transforms.Compose([
@@ -267,6 +223,8 @@ def main():
 
     # Init model and optimizer
     model = Encoder(device).to(device)
+    #Initialise weights and train
+    path = "./output"
   
     #Initialise weights
     model.apply(weights_init)
@@ -292,14 +250,14 @@ def main():
             data = data.to(device)
             optimizer.zero_grad()
             f_data=model(data) # [N,2,1,1]
-            f_targets=model(data) #[N,2,1,1]
+            f_targets=model(targets) #[N,2,1,1]
 
             #Apply rotatin matrix to f_data with feature transformer
             f_data_trasformed= feature_transformer(f_data,angles,device)
 
-            #Define loss
-
-            loss=define_loss(args,f_data_trasformed,f_targets)
+            #Define Loss
+            forb_distance=torch.nn.PairwiseDistance()
+            loss=(forb_distance(f_data_trasformed.view(-1,2),f_targets.view(-1,2))**2).sum()
 
             # Backprop
             loss.backward()
@@ -335,10 +293,10 @@ def main():
     np.save(path+'/test_loss',test_loss)
     np.save(path+'/rotation_test_loss',rotation_test_loss)
 
-    plot_learning_curve(args,train_loss,test_loss,rotation_test_loss,path)
+    plot_learning_curve(args,train_loss,test_loss,rotation_test_loss)
 
 
-def plot_learning_curve(args,training_loss,test_loss,rotation_test_loss,path):
+def plot_learning_curve(args,training_loss,test_loss,rotation_test_loss):
 
     x_ticks=np.arange(len(training_loss))*args.store_interval*args.batch_size
 
@@ -355,9 +313,18 @@ def plot_learning_curve(args,training_loss,test_loss,rotation_test_loss,path):
     plt.title('Cosine Test Loss')
     plt.xlabel('Training Examples')
 
-    path = path+"/learning_curves"
+    path = "./output/learning_curves"
     plt.savefig(path)
     plt.close()
-  
+
+
+
+
+
+    
 if __name__ == '__main__':
+    # Create save path
+    path = "./output"
+    if not os.path.exists(path):
+        os.makedirs(path)
     main()

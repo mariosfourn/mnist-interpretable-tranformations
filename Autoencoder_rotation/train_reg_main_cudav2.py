@@ -406,6 +406,8 @@ def main():
     rotation_test_loss=np.array(rotation_test_loss)
     plot_learning_curve(args,recon_train_loss,regulariser_train_loss,rotation_test_loss)
 
+
+    
  
 if __name__ == '__main__':
     main()
