@@ -122,8 +122,7 @@ def save_images(args,images, epoch, nrow=None):
         images: array of shape [N,1,h,w], rgb=1 or 3
     """
     if nrow == None:
-        nrow = int(np.floor(np.sqrt(images.size(0)
-            )))
+        nrow = int(np.floor(np.sqrt(images.size(0))))
 
     img = torchvision.utils.make_grid(images, nrow=nrow, normalize=True).numpy()
     img = np.transpose(img, (1,2,0))
@@ -138,59 +137,59 @@ def save_images(args,images, epoch, nrow=None):
 def round_even(x):
     return int(round(x/2.)*2)
 
-class Penalty_Loss(nn.Module):
-    """
-    Penalty loss on feature vector to ensure that in encodes rotation information
-    """
+# class Penalty_Loss(nn.Module):
+#     """
+#     Penalty loss on feature vector to ensure that in encodes rotation information
+#     """
     
-    def __init__(self,proportion=1.0, size_average=False):
-        super(Penalty_Loss,self).__init__()
-        self.size_average=size_average #flag for mena loss
-        self.proportion=proportion     #proportion of feature vector to be penalised
+#     def __init__(self,proportion=1.0, size_average=False):
+#         super(Penalty_Loss,self).__init__()
+#         self.size_average=size_average #flag for mena loss
+#         self.proportion=proportion     #proportion of feature vector to be penalised
         
-    def forward(self,x,y):
-        """
-        penalty loss bases on cosine similarity being 1
+#     def forward(self,x,y):
+#         """
+#         penalty loss bases on cosine similarity being 1
 
-        Args:
-            x: [batch,1,ndims]
-            y: [batch,1,ndims]
-        """
-        x=x.view(x.shape[0],-1)
-        y=y.view(y.shape[0],-1)
-        #Number of features
-        total_dims=x.shape[1]
-        #Batch size
-        batch_size=x.shape[0]
+#         Args:
+#             x: [batch,1,ndims]
+#             y: [batch,1,ndims]
+#         """
+#         x=x.view(x.shape[0],-1)
+#         y=y.view(y.shape[0],-1)
+#         #Number of features
+#         total_dims=x.shape[1]
+#         #Batch size
+#         batch_size=x.shape[0]
 
-        #Number of features penalised
-        ndims=round_even(self.proportion*total_dims)
-        reg_loss=0.0
-        for i in range(0,ndims-1,2):
-            x_i=x[:,i:i+2]
-            y_i=y[:,i:i+2]
-            dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
-            x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
-            y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+= (torch.sum(dot_prod/(x_norm*y_norm))-1)**2
-        if self.size_average:
-            reg_loss=reg_loss/x.shape[0]/(ndims//2)
-        return reg_loss
+#         #Number of features penalised
+#         ndims=round_even(self.proportion*total_dims)
+#         reg_loss=0.0
+#         for i in range(0,ndims-1,2):
+#             x_i=x[:,i:i+2]
+#             y_i=y[:,i:i+2]
+#             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
+#             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
+#             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
+#             reg_loss+= (torch.sum(dot_prod/(x_norm*y_norm))-1)**2
+#         if self.size_average:
+#             reg_loss=reg_loss/x.shape[0]/(ndims//2)
+#         return reg_loss
 
 
-def penalised_loss(args,output,targets,f_data,f_targets):
-    """
-    Define penalised loss
-    """
+# def penalised_loss(args,output,targets,f_data,f_targets):
+#     """
+#     Define penalised loss
+#     """
 
-    # Binary cross entropy loss
-    loss_fnc = nn.BCELoss(size_average=True)
-    loss_reg =Penalty_Loss(size_average=True)
-    #Add 
-    reconstruction_loss=loss_fnc(output,targets)
-    rotation_loss=loss_reg(f_data,f_targets)
-    total_loss= reconstruction_loss+args.Lambda*rotation_loss
-    return total_loss,reconstruction_loss,rotation_loss
+#     # Binary cross entropy loss
+#     loss_fnc = nn.BCELoss(size_average=True)
+#     loss_reg =Penalty_Loss(size_average=True)
+#     #Add 
+#     reconstruction_loss=loss_fnc(output,targets)
+#     rotation_loss=loss_reg(f_data,f_targets)
+#     total_loss= reconstruction_loss+args.Lambda*rotation_loss
+#     return total_loss,reconstruction_loss,rotation_loss
 
 
 def evaluate_model(args,device,model,data_loader):
@@ -209,11 +208,12 @@ def evaluate_model(args,device,model,data_loader):
             # Forward pass
             data = data.to(device)
            
-            output, f_data, f_targets = model(data, targets,angles) #for feature vector
-            loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets)
+            #Reconstruction Loss 
+            loss_fnc = nn.BCELoss(size_average=True)
+            loss=loss_fnc(output,targets)
             break
 
-    return reconstruction_loss,penalty_loss
+    return loss.item()
  
 
 
@@ -335,8 +335,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     prediction_error=[] #Average  rotation prediction error in degrees
-    recon_train_loss=[] # Reconstruction traning loss
-    penalty_train_loss=[] # Penalty loss during training
+    training_loss=[] 
 
     # Where the magic happens
     for epoch in range(1, args.epochs + 1):
@@ -351,11 +350,10 @@ def main():
             # Forward pass
             data = data.to(device)
             optimizer.zero_grad()
-            #(output of autoencoder, feature vector of input, feature vector of rotated data)
-            output, f_data, f_targets = model(data, targets,angles) 
 
-            #Loss
-            loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets)
+            #Reconstruction Loss 
+            loss_fnc = nn.BCELoss(size_average=True)
+            loss=loss_fnc(output,targets)
 
             # Backprop
             loss.backward()
@@ -372,12 +370,12 @@ def main():
             if batch_idx % args.store_interval==0:
                 #Evaluate loss in 1,0000 sample of the traning set
         
-                recon_loss, pen_loss=evaluate_model(args,device,model,train_loader_rotation)
-                recon_train_loss.append(recon_loss.item())
-                penalty_train_loss.append(pen_loss.item())
+                training_loss.append(evaluate_model(args,device,model,train_loader_rotation))
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
+
+            if batch_idx==5: break
         
         if epoch % 5==0:
             #Test reconstruction by printing image
@@ -385,29 +383,24 @@ def main():
     #Save model
     save_model(args,model)
     #Save losses
-    recon_train_loss=np.array(recon_train_loss)
-    penalty_train_loss=np.array(penalty_train_loss)
+    training_loss=np.array(training_loss)
     prediction_error=np.array(prediction_error)
 
 
-    np.save(path+'/recon_train_loss',recon_train_loss)
-    np.save(path+'/penalty_train_loss',penalty_train_loss)
-    np.save(path+'/rotation_prediction_loss',prediction_error)
-    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error,path)
+    np.save(path+'/recon_train_loss',np.array(recon_train_loss))
+    np.save(path+'/rotation_prediction_loss',np.array(prediction_error))
+    plot_learning_curve(args,training_loss,prediction_error,path)
 
 
-def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
+def plot_learning_curve(args,training_loss,rotation_test_loss,path):
 
-    x_ticks=np.arange(len(recon_loss))*args.store_interval*args.batch_size
+    x_ticks=np.arange(len(training_loss))*args.store_interval*args.batch_size
     with plt.style.context('ggplot'):
 
         fig, (ax1,ax2)=plt.subplots(2,1,sharex=True,figsize=(5,5))
-        total_loss=recon_loss+args.Lambda*penatly_loss
        
         #Plot loss
-        ax1.plot(x_ticks,recon_loss,label='Reconstruction (BCE) training loss',linewidth=1.25)
-        ax1.plot(x_ticks,penatly_loss,label='Penalty training loss',linewidth=1.25)
-        ax1.plot(x_ticks,total_loss,label ='Total training Loss',linewidth=1.25)
+        ax1.plot(x_ticks,training_loss,label='Reconstruction (BCE) training loss',linewidth=1.25)
         ax1.set_ylabel('Loss',fontsize=10)
         
         ax1.legend()
