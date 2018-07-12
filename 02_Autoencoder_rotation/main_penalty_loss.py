@@ -184,7 +184,7 @@ def penalised_loss(args,output,targets,f_data,f_targets):
 
     # Binary cross entropy loss
     loss_fnc = nn.BCELoss(size_average=True)
-    loss_reg = Penalty_Loss(size_average=True)
+    loss_reg = Penalty_Loss(size_average=True,proportion=args.prop)
     #Add 
     reconstruction_loss=loss_fnc(output,targets)
     rotation_loss=loss_reg(f_data,f_targets)
@@ -290,6 +290,8 @@ def main():
                         help='proportion of penalty loss of the total loss (default=0.1)')
     parser.add_argument('--name', type=str, default='',
                         help='name of the run that is added to the output directory')
+    arser.add_argument('--prop',type=float, default=1.0,
+                        help='proportion of feature vector with penalty loss')
   
     args = parser.parse_args()
 
