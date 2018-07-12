@@ -122,7 +122,8 @@ def save_images(args,images, epoch, nrow=None):
         images: array of shape [N,1,h,w], rgb=1 or 3
     """
     if nrow == None:
-        nrow = int(np.floor(np.sqrt(images.size(0))))
+        nrow = int(np.floor(np.sqrt(images.size(0)
+            )))
 
     img = torchvision.utils.make_grid(images, nrow=nrow, normalize=True).numpy()
     img = np.transpose(img, (1,2,0))
@@ -267,8 +268,8 @@ def rotation_test(args, model, device, test_loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+                        help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size-recon', type=int, default=10, metavar='N',
                         help='input batch size for reconstruction testing (default: 10)')
     parser.add_argument('--test-batch-size-rot', type=int, default=1000, metavar='N',
@@ -377,8 +378,6 @@ def main():
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
-
-            if batch_idx==5: break
         
         if epoch % 5==0:
             #Test reconstruction by printing image
@@ -408,7 +407,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         #Plot loss
         ax1.plot(x_ticks,recon_loss,label='Reconstruction (BCE) training loss',linewidth=1.25)
         ax1.plot(x_ticks,penatly_loss,label='Penalty training loss',linewidth=1.25)
-        ax1.plot(x_ticks,total_loss,label ='Total trainig Loss',linewidth=1.25)
+        ax1.plot(x_ticks,total_loss,label ='Total training Loss',linewidth=1.25)
         ax1.set_ylabel('Loss',fontsize=10)
         
         ax1.legend()
