@@ -75,20 +75,17 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
     return outputs, angles
 
 
-def save_model(args,model,epoch):
+def save_model(args,model):
     """
     saves a checkpoint so that model weight can later be used for inference
     Args:
     model:  pytorch model
-    epoch:  trainign epoch
     """
-
     path='./model_'+args.name
     import os
     if not os.path.exists(path):
       os.mkdir(path)
-    if (epoch % 1==0):
-        torch.save(model.state_dict(), path+'/checkpoint.pt')
+    torch.save(model.state_dict(), path+'/checkpoint.pt')
 
 
 def reconstruction_test(args, model, device, test_loader, epoch):
@@ -116,42 +113,6 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             break
         output = output.cpu()
         save_images(args,output, epoch)
-
-# def plot_learning_curve(args,recon_train_loss,regulariser_train_loss,rotation_loss):
-#     """z=
-#     Plots learning curves at the end of traning
-#     """
-#     total_loss=recon_train_loss+args.regulariser*regulariser_train_loss
-#     x_ticks1=np.arange(len(recon_train_loss))*args.store_interval*arg.batch_size
-
-#     fig, ax1=plt.subplots()
-#     color='tab:red'
-#     lns1=ax1.plot(x_ticks1,recon_train_loss,label='Training Reconstrunction Loss (BCE)')
-#     lns2=ax1.plot(x_ticks1,regulariser_train_loss,label='Training Rotation disrcimination loss')
-#     lns3=ax1.plot(x_ticks1,total_loss,'-.',color=color,label='Total Training Loss')
-#     ax1.set_xlabel('Training Examples')
-#     ax1.set_ylabel('Loss', color=color)
-#     ax1.tick_params(axis='y', colors= color)
-
-#     color = 'tab:green'
-#     ax2 = ax1.twinx()
-#     lns4=ax2.plot(x_ticks1,rotation_loss,color=color,label='Average test rotation loss')
-#     ax2.set_ylabel('Degrees',color=color)
-#     ax2.tick_params(axis='y', colors= color)
-    
-
-#     #Legend
-#     lns = lns1+lns2+lns3+lns4
-#     labs = [l.get_label() for l in lns]
-#     ax1.legend(lns, labs, loc=0)
-#     ax1.grid(True)
-#     #ax2.set_ylim([-360,360])
-#     plt.title(r'Learning Curves with $\lambda$={}'.format(args.regulariser))
-#     fig.tight_layout()  # otherwise the right y-label is slightly clipped
-
-#     path = "./output_lambda_{}".format(args.regulariser)
-#     fig.savefig(path+'/learning_curves')
-#     fig.clf()
 
 
 def save_images(args,images, epoch, nrow=None):
@@ -182,7 +143,7 @@ class Penalty_Loss(nn.Module):
     """
     
     def __init__(self,proportion=1.0, size_average=False):
-        super(Reg_Loss,self).__init__()
+        super(Penalty_Loss,self).__init__()
         self.size_average=size_average #flag for mena loss
         self.proportion=proportion     #proportion of feature vector to be penalised
         
@@ -231,7 +192,7 @@ def penalised_loss(args,output,targets,f_data,f_targets):
     return total_loss,reconstruction_loss,rotation_loss
 
 
-def evaluate_model(args,model,data_loader):
+def evaluate_model(args,device,model,data_loader):
     """
     Evaluate loss for input data loader
     """
@@ -246,7 +207,7 @@ def evaluate_model(args,model,data_loader):
 
             # Forward pass
             data = data.to(device)
-            optimizer.zero_grad()
+           
             output, f_data, f_targets = model(data, targets,angles) #for feature vector
             loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets)
             break
@@ -299,6 +260,7 @@ def rotation_test(args, model, device, test_loader):
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
             average_error+=np.sum((angles*180/np.pi)-angles_estimate.numpy())/len(test_loader.dataset)
+            break
     return average_error
 
 
@@ -333,7 +295,7 @@ def main():
     args = parser.parse_args()
 
     # Create save path
-    path = "./output_" +args.mame
+    path = "./output_" +args.name
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -408,13 +370,15 @@ def main():
             #Store training and test loss
             if batch_idx % args.store_interval==0:
                 #Evaluate loss in 1,0000 sample of the traning set
-                recon_loss, pen_loss=evaluate_model(args,model,train_loader_rotation)
+        
+                recon_loss, pen_loss=evaluate_model(args,device,model,train_loader_rotation)
                 recon_train_loss.append(recon_loss.item())
                 penalty_train_loss.append(pen_loss.item())
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
-
+            
+            if batch_idx==50: break
         
         if epoch % 5==0:
             #Test reconstruction by printing image
@@ -426,15 +390,16 @@ def main():
     penalty_train_loss=np.array(penalty_train_loss)
     prediction_error=np.array(prediction_error)
 
+
     np.save(path+'/recon_train_loss',np.array(recon_train_loss))
     np.save(path+'/penalty_train_loss',np.array(penalty_train_loss))
     np.save(path+'/rotation_prediction_loss',np.array(prediction_error))
-    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error)
+    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error,path)
 
 
 def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
 
-    x_ticks=np.arange(len(training_loss))*args.store_interval*args.batch_size
+    x_ticks=np.arange(len(recon_loss))*args.store_interval*args.batch_size
     with plt.style.context('ggplot'):
 
         fig, (ax1,ax2)=plt.subplots(2,1,sharex=True,figsize=(5,5))
