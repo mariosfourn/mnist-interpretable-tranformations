@@ -185,7 +185,7 @@ def penalised_loss(args,output,targets,f_data,f_targets):
 
     # Binary cross entropy loss
     loss_fnc = nn.BCELoss(size_average=True)
-    loss_reg =Penalty_Loss(size_average=True)
+    loss_reg = Penalty_Loss(size_average=True)
     #Add 
     reconstruction_loss=loss_fnc(output,targets)
     rotation_loss=loss_reg(f_data,f_targets)
@@ -223,7 +223,6 @@ def rotation_test(args, model, device, test_loader):
     return the average error in degrees
     """
     model.eval()
-    average_error=0.0 #in degrees
     with torch.no_grad():
         for data, target in test_loader:
             
@@ -260,7 +259,7 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            average_error+=np.sum((angles*180/np.pi)-angles_estimate.numpy())/len(test_loader.dataset)
+            average_error=abs((angles*180/np.pi)-angles_estimate.numpy()).mean()
             break
     return average_error
 
@@ -378,6 +377,7 @@ def main():
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
+
         
         if epoch % 5==0:
             #Test reconstruction by printing image
