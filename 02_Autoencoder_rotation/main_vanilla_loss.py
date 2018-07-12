@@ -208,6 +208,8 @@ def evaluate_model(args,device,model,data_loader):
             # Forward pass
             data = data.to(device)
            
+            output, f_data, f_targets = model(data, targets,angles)
+
             #Reconstruction Loss 
             loss_fnc = nn.BCELoss(size_average=True)
             loss=loss_fnc(output,targets)
@@ -223,10 +225,8 @@ def rotation_test(args, model, device, test_loader):
     return the average error in degrees
     """
     model.eval()
-    average_error=0.0 #in degrees
     with torch.no_grad():
         for data, target in test_loader:
-            
 
             target,angles = rotate_tensor(data.numpy())
             angles=angles.reshape(-1,1)
@@ -260,7 +260,7 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            average_error+=np.sum((angles*180/np.pi)-angles_estimate.numpy())/len(test_loader.dataset)
+            average_error=abs((angles*180/np.pi)-angles_estimate.numpy()).mean()
             break
     return average_error
 
@@ -351,6 +351,7 @@ def main():
             data = data.to(device)
             optimizer.zero_grad()
 
+            output, f_data, f_targets = model(data, targets,angles)
             #Reconstruction Loss 
             loss_fnc = nn.BCELoss(size_average=True)
             loss=loss_fnc(output,targets)
@@ -387,8 +388,8 @@ def main():
     prediction_error=np.array(prediction_error)
 
 
-    np.save(path+'/recon_train_loss',np.array(recon_train_loss))
-    np.save(path+'/rotation_prediction_loss',np.array(prediction_error))
+    np.save(path+'/training_loss',training_loss)
+    np.save(path+'/prediction_error',prediction_error)
     plot_learning_curve(args,training_loss,prediction_error,path)
 
 
