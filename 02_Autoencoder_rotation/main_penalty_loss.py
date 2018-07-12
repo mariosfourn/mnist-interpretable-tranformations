@@ -376,6 +376,7 @@ def main():
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
+
         
         if epoch % 5==0:
             #Test reconstruction by printing image
