@@ -267,8 +267,8 @@ def rotation_test(args, model, device, test_loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+                        help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size-recon', type=int, default=10, metavar='N',
                         help='input batch size for reconstruction testing (default: 10)')
     parser.add_argument('--test-batch-size-rot', type=int, default=1000, metavar='N',
