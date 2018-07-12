@@ -377,8 +377,6 @@ def main():
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
-
-            if batch_idx==5: break
         
         if epoch % 5==0:
             #Test reconstruction by printing image
@@ -391,9 +389,9 @@ def main():
     prediction_error=np.array(prediction_error)
 
 
-    np.save(path+'/recon_train_loss',np.array(recon_train_loss))
-    np.save(path+'/penalty_train_loss',np.array(penalty_train_loss))
-    np.save(path+'/rotation_prediction_loss',np.array(prediction_error))
+    np.save(path+'/recon_train_loss',recon_train_loss)
+    np.save(path+'/penalty_train_loss',penalty_train_loss)
+    np.save(path+'/rotation_prediction_loss',prediction_error)
     plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error,path)
 
 
