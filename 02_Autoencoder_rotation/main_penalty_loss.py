@@ -168,10 +168,13 @@ def save_images(args,images, epoch, nrow=None):
 
     plt.figure()
     plt.imshow(img)
-    path = "./output_lambda_{}".format(args.regulariser)
+    path = "./output_" +args.mame
     plt.savefig(path+"/epoch{:04d}".format(epoch))
     plt.close()
 
+
+def round_even(x):
+    return int(round(x/2.)*2)
 
 class Penalty_Loss(nn.Module):
     """
@@ -180,7 +183,7 @@ class Penalty_Loss(nn.Module):
     
     def __init__(self,proportion=1.0, size_average=False):
         super(Reg_Loss,self).__init__()
-        self.size_avera ge=size_average #flag for mena loss
+        self.size_average=size_average #flag for mena loss
         self.proportion=proportion     #proportion of feature vector to be penalised
         
     def forward(self,x,y):
@@ -193,8 +196,13 @@ class Penalty_Loss(nn.Module):
         """
         x=x.view(x.shape[0],-1)
         y=y.view(y.shape[0],-1)
-        ndims=x.shape[1]
+        #Number of features
+        total_dims=x.shape[1]
+        #Batch size
         batch_size=x.shape[0]
+
+        #Number of features penalised
+        ndims=round_even(self.proportion*total_dims)
         reg_loss=0.0
         for i in range(0,ndims-1,2):
             x_i=x[:,i:i+2]
