@@ -96,14 +96,14 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             # Reshape data: apply multiple angles to the same minibatch, hence
             # repeat
             data = data.view(data.size(0), -1)
-            data = data.repeat(args.test_batch_size,1)
-            data = data.view(args.test_batch_size**2,1, 28,28)
+            data = data.repeat(test_loader.batch_size,1)
+            data = data.view(test_loader.batch_size**2,1, 28,28)
             target = torch.zeros_like(data)
 
-            angles = torch.linspace(0, 2*np.pi, steps=args.test_batch_size)
-            angles = angles.view(args.test_batch_size, 1)
-            angles = angles.repeat(1, args.test_batch_size)
-            angles = angles.view(args.test_batch_size**2, 1)
+            angles = torch.linspace(0, 2*np.pi, steps=test_loader.batch_size)
+            angles = angles.view(test_loader.batch_size, 1)
+            angles = angles.repeat(1, test_loader.batch_size)
+            angles = angles.view(test_loader.batch_size**2, 1)
 
 
             # Forward pass
@@ -377,8 +377,8 @@ def main():
 
                 # Average prediction error in degrees
                 prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
-            
-            if batch_idx==50: break
+
+            if batch_idx==5: break
         
         if epoch % 5==0:
             #Test reconstruction by printing image
