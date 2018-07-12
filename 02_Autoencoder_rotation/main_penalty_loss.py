@@ -129,7 +129,7 @@ def save_images(args,images, epoch, nrow=None):
 
     plt.figure()
     plt.imshow(img)
-    path = "./output_" +args.mame
+    path = "./output_" +args.name
     plt.savefig(path+"/epoch{:04d}".format(epoch))
     plt.close()
 
