@@ -88,7 +88,7 @@ def save_model(args,model):
     torch.save(model.state_dict(), path+'/checkpoint.pt')
 
 
-def reconstruction_test(args, model, device, test_loader, epoch):
+def reconstruction_test(args, model, device, test_loader, epoch,rot_range=np.pi):
 
     model.eval()
     with torch.no_grad():
@@ -100,7 +100,7 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             data = data.view(test_loader.batch_size**2,1, 28,28)
             target = torch.zeros_like(data)
 
-            angles = torch.linspace(0, 2*np.pi, steps=test_loader.batch_size)
+            angles = torch.linspace(0, rot_range, steps=test_loader.batch_size)
             angles = angles.view(test_loader.batch_size, 1)
             angles = angles.repeat(1, test_loader.batch_size)
             angles = angles.view(test_loader.batch_size**2, 1)
