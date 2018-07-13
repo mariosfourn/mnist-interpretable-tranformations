@@ -88,7 +88,7 @@ def save_model(args,model):
     torch.save(model.state_dict(), path+'/checkpoint.pt')
 
 
-def reconstruction_test(args, model, device, test_loader, epoch):
+def reconstruction_test(args, model, device, test_loader, epoch,rot_range=np.pi):
 
     model.eval()
     with torch.no_grad():
@@ -100,7 +100,7 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             data = data.view(test_loader.batch_size**2,1, 28,28)
             target = torch.zeros_like(data)
 
-            angles = torch.linspace(0, 2*np.pi, steps=test_loader.batch_size)
+            angles = torch.linspace(0, rot_range, steps=test_loader.batch_size)
             angles = angles.view(test_loader.batch_size, 1)
             angles = angles.repeat(1, test_loader.batch_size)
             angles = angles.view(test_loader.batch_size**2, 1)
@@ -391,6 +391,7 @@ def main():
     prediction_error=np.array(prediction_error)
 
 
+
     np.save(path+'/recon_train_loss',recon_train_loss)
     np.save(path+'/penalty_train_loss',penalty_train_loss)
     np.save(path+'/rotation_prediction_loss',prediction_error)
@@ -408,7 +409,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         #Plot loss
         ax1.plot(x_ticks,recon_loss,label='Reconstruction (BCE) training loss',linewidth=1.25)
         ax1.plot(x_ticks,penatly_loss,label='Penalty training loss',linewidth=1.25)
-        ax1.plot(x_ticks,total_loss,label ='Total trainig Loss',linewidth=1.25)
+        ax1.plot(x_ticks,total_loss,label ='Total training Loss',linewidth=1.25)
         ax1.set_ylabel('Loss',fontsize=10)
         
         ax1.legend()
@@ -433,7 +434,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         for tick in ax2.get_yticklabels():
             tick.set_color('gray')
 
-        fig.suptitle('Learning Curves')
+        fig.suptitle(r'Learning Curves $\lambda$={}'.format{args.Lambda})
         fig.tight_layout(rect=[0, 0.03, 1, 0.98])
         fig.savefig(path+'/learning_curves')
         fig.clf()
