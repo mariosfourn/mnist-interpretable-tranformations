@@ -40,13 +40,13 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
         outputs.append(output)
 
     outputs=np.stack(outputs, 0)
-
     if plot:
         #Create a grid plot with original and scaled images
         N=input.shape[0]
-        rows=int(np.floor(N**0.5))
+        rows=round_even(N**0.5)
         cols=N//rows
         plt.figure()
+
         for j in range(N):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
@@ -88,7 +88,7 @@ def save_model(args,model):
     torch.save(model.state_dict(), path+'/checkpoint.pt')
 
 
-def reconstruction_test(args, model, device, test_loader, epoch):
+def reconstruction_test(args, model, device, test_loader, epoch,rot_range=np.pi):
 
     model.eval()
     with torch.no_grad():
@@ -100,7 +100,7 @@ def reconstruction_test(args, model, device, test_loader, epoch):
             data = data.view(test_loader.batch_size**2,1, 28,28)
             target = torch.zeros_like(data)
 
-            angles = torch.linspace(0, 2*np.pi, steps=test_loader.batch_size)
+            angles = torch.linspace(0, rot_range, steps=test_loader.batch_size)
             angles = angles.view(test_loader.batch_size, 1)
             angles = angles.repeat(1, test_loader.batch_size)
             angles = angles.view(test_loader.batch_size**2, 1)
@@ -344,10 +344,12 @@ def main():
         for batch_idx, (data, target) in enumerate(train_loader):
             model.train()
             # Reshape data
-            targets, angles = rotate_tensor(data.numpy())
+            targets, angles = rotate_tensor(data.numpy(),plot=True)
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
+
+            import ipdb; ipdb.set_trace()
 
             # Forward pass
             data = data.to(device)
@@ -392,6 +394,7 @@ def main():
     prediction_error=np.array(prediction_error)
 
 
+
     np.save(path+'/recon_train_loss',recon_train_loss)
     np.save(path+'/penalty_train_loss',penalty_train_loss)
     np.save(path+'/rotation_prediction_loss',prediction_error)
@@ -434,7 +437,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         for tick in ax2.get_yticklabels():
             tick.set_color('gray')
 
-        fig.suptitle('Learning Curves')
+        fig.suptitle(r'Learning Curves $\lambda$={}'.format(args.Lambda))
         fig.tight_layout(rect=[0, 0.03, 1, 0.98])
         fig.savefig(path+'/learning_curves')
         fig.clf()
