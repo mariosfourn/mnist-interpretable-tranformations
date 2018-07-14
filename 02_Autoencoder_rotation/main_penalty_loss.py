@@ -143,10 +143,11 @@ class Penalty_Loss(nn.Module):
     Penalty loss on feature vector to ensure that in encodes rotation information
     """
     
-    def __init__(self,proportion=1.0, size_average=False):
+    def __init__(self,proportion=1.0, size_average=False,type='mse'):
         super(Penalty_Loss,self).__init__()
         self.size_average=size_average #flag for mena loss
         self.proportion=proportion     #proportion of feature vector to be penalised
+        self.type=type
         
     def forward(self,x,y):
         """
@@ -173,8 +174,12 @@ class Penalty_Loss(nn.Module):
             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
 
+            if type=='mse':
+                reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
+            else:
+                reg_loss+=(abs(dot_prod/(x_norm*y_norm)-1)).sum()
+                
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -187,7 +192,7 @@ def penalised_loss(args,output,targets,f_data,f_targets):
 
     # Binary cross entropy loss
     loss_fnc = nn.BCELoss(size_average=True)
-    loss_reg = Penalty_Loss(size_average=True,proportion=args.prop)
+    loss_reg = Penalty_Loss(size_average=True,proportion=args.prop,type=args.loss)
     #Add 
     reconstruction_loss=loss_fnc(output,targets)
     rotation_loss=loss_reg(f_data,f_targets)
@@ -268,6 +273,7 @@ def rotation_test(args, model, device, test_loader):
 
 def main():
     # Training settings
+    list_of_choices=['mse','abs']
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
@@ -295,7 +301,8 @@ def main():
                         help='name of the run that is added to the output directory')
     parser.add_argument('--prop',type=float, default=1.0,
                         help='proportion of feature vector with penalty loss')
-  
+    parser.add_argument("--loss",dest='loss',default='mse',
+    choices=list_of_choices, help='Decide type of penatly loss, mse (defautl) or abs')  
     args = parser.parse_args()
 
     # Create save path
