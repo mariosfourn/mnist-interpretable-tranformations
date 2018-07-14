@@ -40,13 +40,13 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
         outputs.append(output)
 
     outputs=np.stack(outputs, 0)
-
     if plot:
         #Create a grid plot with original and scaled images
         N=input.shape[0]
-        rows=int(np.floor(N**0.5))
+        rows=round_even(N**0.5)
         cols=N//rows
         plt.figure()
+
         for j in range(N):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
@@ -343,10 +343,12 @@ def main():
         for batch_idx, (data, target) in enumerate(train_loader):
             model.train()
             # Reshape data
-            targets, angles = rotate_tensor(data.numpy())
+            targets, angles = rotate_tensor(data.numpy(),plot=True)
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
+
+            import ipdb; ipdb.set_trace()
 
             # Forward pass
             data = data.to(device)
@@ -434,7 +436,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         for tick in ax2.get_yticklabels():
             tick.set_color('gray')
 
-        fig.suptitle(r'Learning Curves $\lambda$={}'.format{args.Lambda})
+        fig.suptitle(r'Learning Curves $\lambda$={}'.format(args.Lambda))
         fig.tight_layout(rect=[0, 0.03, 1, 0.98])
         fig.savefig(path+'/learning_curves')
         fig.clf()
