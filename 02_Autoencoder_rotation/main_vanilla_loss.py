@@ -47,7 +47,7 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
         rows=int(np.floor(N**0.5))
         cols=N//rows
         plt.figure()
-        for j in range(N):
+        for j in range(rows*cols):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
                 image=input[j].transpose(1,2,0)
@@ -59,7 +59,7 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
             plt.axis('off')
         #Create new figure with rotated
         plt.figure(figsize=(7,7))
-        for j in range(N):
+        for j in range(rows*cols):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
                 image=outputs[j].transpose(1,2,0)
