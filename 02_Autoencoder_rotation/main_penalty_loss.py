@@ -175,7 +175,7 @@ class Penalty_Loss(nn.Module):
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
             reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
-            
+
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -347,7 +347,7 @@ def main():
         for batch_idx, (data, target) in enumerate(train_loader):
             model.train()
             # Reshape data
-            targets, angles = rotate_tensor(data.numpy(),plot=True)
+            targets, angles = rotate_tensor(data.numpy())
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
