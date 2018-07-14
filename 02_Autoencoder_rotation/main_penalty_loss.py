@@ -43,11 +43,12 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
     if plot:
         #Create a grid plot with original and scaled images
         N=input.shape[0]
-        rows=round_even(N**0.5)
+        rows=int(np.floor(N**0.5))
         cols=N//rows
+
         plt.figure()
 
-        for j in range(N):
+        for j in range(rows*cols):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
                 image=input[j].transpose(1,2,0)
@@ -59,7 +60,7 @@ def rotate_tensor(input,rot_range=np.pi,plot=False):
             plt.axis('off')
         #Create new figure with rotated
         plt.figure(figsize=(7,7))
-        for j in range(N):
+        for j in range(rows*cols):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
                 image=outputs[j].transpose(1,2,0)
@@ -166,13 +167,15 @@ class Penalty_Loss(nn.Module):
         #Number of features penalised
         ndims=round_even(self.proportion*total_dims)
         reg_loss=0.0
+
         for i in range(0,ndims-1,2):
             x_i=x[:,i:i+2]
             y_i=y[:,i:i+2]
             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+= (torch.sum(dot_prod/(x_norm*y_norm))-1)**2
+            reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
+            
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -348,8 +351,6 @@ def main():
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
-
-            import ipdb; ipdb.set_trace()
 
             # Forward pass
             data = data.to(device)
