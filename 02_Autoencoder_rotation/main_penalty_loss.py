@@ -11,8 +11,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 
-from matplotlib import pyplot as plt
+import matplotlib
 from scipy.ndimage.interpolation import rotate
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 
 from model import Net_Reg
