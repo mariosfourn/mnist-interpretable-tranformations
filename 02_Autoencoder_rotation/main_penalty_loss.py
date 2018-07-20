@@ -10,9 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
+import pandas as pd
+import struct
 
-from matplotlib import pyplot as plt
+import matplotlib
 from scipy.ndimage.interpolation import rotate
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 
 from model import Net_Reg
@@ -21,6 +25,25 @@ def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
          nn.init.xavier_normal_(m.weight)
+
+
+
+
+def rotate_tensor_give_angles(input,angles):
+    """
+    Rotates each image by angles and concatinates them in one tenosr
+    Args:
+        input: [N,c,h,w] **numpy** tensor
+        angles: [D,1]
+    Returns:
+        output [N*D,c,h,w] **numpy** tensor
+    """
+    outputs = []
+    for i in range(input.shape[0]):
+        for angle in angles:
+            output = rotate(input[i,...], 180*angle/np.pi, axes=(1,2), reshape=False)
+            outputs.append(output)
+    return np.stack(outputs, 0)
 
 
 def rotate_tensor(input,rot_range=np.pi,plot=False):
@@ -144,10 +167,11 @@ class Penalty_Loss(nn.Module):
     Penalty loss on feature vector to ensure that in encodes rotation information
     """
     
-    def __init__(self,proportion=1.0, size_average=False):
+    def __init__(self,proportion=1.0, size_average=False,type='mse'):
         super(Penalty_Loss,self).__init__()
         self.size_average=size_average #flag for mena loss
         self.proportion=proportion     #proportion of feature vector to be penalised
+        self.type=type
         
     def forward(self,x,y):
         """
@@ -174,8 +198,12 @@ class Penalty_Loss(nn.Module):
             dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-            reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
 
+            if type=='mse':
+                reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
+            else:
+                reg_loss+=(abs(dot_prod/(x_norm*y_norm)-1)).sum()
+                
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -188,7 +216,7 @@ def penalised_loss(args,output,targets,f_data,f_targets):
 
     # Binary cross entropy loss
     loss_fnc = nn.BCELoss(size_average=True)
-    loss_reg = Penalty_Loss(size_average=True,proportion=args.prop)
+    loss_reg = Penalty_Loss(size_average=True,proportion=args.prop,type=args.loss)
     #Add 
     reconstruction_loss=loss_fnc(output,targets)
     rotation_loss=loss_reg(f_data,f_targets)
@@ -223,7 +251,7 @@ def evaluate_model(args,device,model,data_loader):
 def rotation_test(args, model, device, test_loader):
     """
     Test how well the eoncoder discrimates angles
-    return the average error in degrees
+    return the average error and std in degrees
     """
     model.eval()
     with torch.no_grad():
@@ -243,9 +271,15 @@ def rotation_test(args, model, device, test_loader):
             #Compare Angles            
             x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
             y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
-            ndims=x.shape[1]        # get dimensionality of feature space
-            batch_size=x.shape[0]   # get batch_size
-            angles_estimate=torch.zeros(batch_size,1).to(device)   
+           
+
+            #Number of features
+            total_dims=x.shape[1]
+            #Batch size
+            batch_size=x.shape[0]
+
+            #Number of features penalised
+            ndims=round_even(self.proportion*total_dims)  
             #Loop every 2 dimensions
             for i in range(0,ndims-1,2):
                 x_i=x[:,i:i+2]      
@@ -262,13 +296,211 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            average_error=abs((angles*180/np.pi)-angles_estimate.numpy()).mean()
-            break
-    return average_error
+            error=angles_estimate.numpy()-(angles*180/np.pi)
+            average_error=error.mean()
+            error_std=error.std(ddof=1)
 
+            break
+    return average_error,error_std
+
+
+def read_idx(filename):
+    import struct
+    with open(filename, 'rb') as f:
+        zero, data_type, dims = struct.unpack('>HBB', f.read(4))
+        shape = tuple(struct.unpack('>I', f.read(4))[0] for d in range(dims))
+        return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
+
+
+def get_metrics(model, data_loader,device, step=5):
+    """ 
+    Returns the average error per step of degrees in the range [0,np.pi]
+    Args:
+        model : pytorch Net_Reg model
+        data_loader
+        step (scalar) in degrees
+    
+    """
+    #turn step to radians
+    step=np.pi*step/180
+    entries=int(np.pi/step)
+    model.eval()
+    errors=np.zeros((entries,len(data_loader.dataset)))
+    
+    
+    with torch.no_grad():
+
+        start_index=0
+        for batch_idx,data in enumerate(data_loader):
+            
+            batch_size=data.shape[0]
+            angles = torch.arange(0, np.pi, step=step)
+            target = rotate_tensor_give_angles(data.numpy(),angles.numpy())
+            data=data.to(device)
+
+            
+            
+            target = torch.from_numpy(target).to(device)
+            
+            #Get Feature vector for original and tranformed image
+
+            x=model.encoder(data) #Feature vector of data
+            y=model.encoder(target) #Feature vector of targets
+
+            #Compare Angles            
+            x=x.view(x.shape[0],1,-1)
+            x=x.repeat(1,entries,1)# Repeat each vector "entries" times
+            x=x.view(-1,x.shape[-1])# collapse 3D tensor to 2D tensor
+            
+            y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
+            
+            new_batch_size=x.shape[0]   # get augmented batch_size
+            
+            #Loop every 2 dimensions
+
+             #Number of features
+            total_dims=x.shape[1]
+            #Number of features penalised
+            ndims=round_even(self.proportion*total_dims)  
+            
+            sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
+            sys.stdout.flush()
+            angles_estimate=torch.zeros(new_batch_size,1).to(device)  
+            
+       
+            for i in range(0,ndims-1,2):
+                x_i=x[:,i:i+2]      
+                y_i=y[:,i:i+2]
+                
+                #Get dot product for the batch
+                dot_prod=torch.bmm(x_i.view(new_batch_size,1,2),y_i.view(new_batch_size,2,1)).view(new_batch_size,1)
+
+                #Get euclidean norm
+                x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
+                y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
+
+                #Get the cosine of the angel for example
+                angles_estimate+=dot_prod/(x_norm*y_norm)
+            
+            
+            angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
+            angles_estimate=angles_estimate.cpu()
+            error=angles_estimate.numpy()-(angles.view(-1,1).repeat(batch_size,1).numpy()*180/np.pi)
+            
+           
+            
+            #Get the tota
+            for i in range(entries):
+                index=np.arange(i,new_batch_size,step=entries)
+                errors[i,start_index:start_index+batch_size]=error[index].reshape(-1,)
+
+            start_index+=batch_size
+    
+    mean_error=errors.mean(axis=1)
+    mean_abs_error=(abs(errors)).mean(axis=1)
+    error_std=errors.std(axis=1, ddof=1)
+   
+    return mean_error, mean_abs_error, error_std
+
+
+class MNISTDadataset(Dataset):
+    def __init__(self,root_dir, digit,transform=None):
+        """
+        Args:
+            digit(int):        MNIST digit
+            root_dir (string): Directory where the ubyte lies
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        file_path =os.path.join(root_dir,'train-images-'+str(digit)+'-ubyte')
+        self.data = read_idx(file_path)/255
+        
+        self.data = torch.Tensor(self.data)
+        self.data =  (self.data).unsqueeze(1)
+        
+        self.transform=transform
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, idx):
+        sample=self.data[idx]
+        
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
+def get_error_per_digit(path,batch_size=100, step=5):
+    """
+    Return plots and csv files with the mean error per MNIST digit in the trainign dataset 
+    for a range of rotation 
+    Args:
+        step (scalar):  rotation step in degrees
+    """
+
+    #Load Dataset for each MNIST digit
+    data_loaders={digit:DataLoader (MNISTDadataset('./data/',digit), 
+        batch_size=args.batch_size, shuffle=False, **kwargs) for digit in range(0,10)}
+
+    #Set up DataFrames
+    #mean_error = pd.DataFrame()
+    mean_abs_error=pd.DataFrame()
+    error_std=pd.DataFrame()
+
+    for digit, data_loader in data_loaders.items():
+        sys.stdout.write('Processing digit {} \n'.format(digit))
+        sys.stdout.flush()
+        results=get_metrics(model,data_loader,device,step)
+        #mean_error[digit]=pd.Series(results[0])
+        mean_abs_error[digit]= pd.Series(results[1])
+        error_std[digit]= pd.Series(results[2])
+
+    #mean_error.index=mean_error.index*step
+    mean_abs_error.index=mean_abs_error.index*step
+    error_std.index=error_std.index*step
+
+    #mean_error.to_csv(os.path.join(path, 'mean_error_per.csv')
+    mean_abs_error.to_csv(os.path.join(path,'mean_abs_error_per_digit.csv'))
+    error_std.to_csv(os.path.join(path,'error_std_per_digit.csv'))
+
+        ##Plottin just absolute error
+    with plt.style.context('ggplot'):
+        mean_abs_error.plot(figsize=(9, 8))
+        plt.xlabel('Degrees')
+        plt.ylabel('Average error in degrees')
+        plt.legend(loc="upper left", bbox_to_anchor=[0, 1],
+                   ncol=2, shadow=True, title="Digits", fancybox=True)
+        
+        plt.tick_params(colors='gray', direction='out')
+        plt.savefig(os.path.join(path,'Abs_mean_curves_per_digit.png'))
+        plt.close()
+
+    ##Plotting absoltue error and std
+    with plt.style.context('ggplot'):
+        fig =plt.figure(figsize=(9, 8))
+        ax = fig.add_subplot(111)
+        x=mean_abs_error.index
+        for digit in mean_abs_error.columns:
+            mean=mean_abs_error[digit]
+            std=error_std[digit]
+            line,= ax.plot(x,mean)
+            ax.fill_between(x,mean-std,mean+std,alpha=0.2,facecolor=line.get_color(),edgecolor=line.get_color())
+        
+        ax.set_xlabel('Degrees')
+        ax.set_ylabel('Average error in degrees')
+        ax.legend(loc="upper left", bbox_to_anchor=[0, 1],
+                   ncol=2, shadow=True, title="Digits", fancybox=True)
+        ax.tick_params(colors='gray', direction='out')
+        fig.savefig(os.path.join(path,'Abs_mean_&_std_per_digit.png'))
+        fig.clf()
 
 def main():
+
     # Training settings
+    list_of_choices=['mse','abs']
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
@@ -296,7 +528,8 @@ def main():
                         help='name of the run that is added to the output directory')
     parser.add_argument('--prop',type=float, default=1.0,
                         help='proportion of feature vector with penalty loss')
-  
+    parser.add_argument("--loss",dest='loss',default='mse',
+    choices=list_of_choices, help='Decide type of penatly loss, mse (defautl) or abs')  
     args = parser.parse_args()
 
     # Create save path
@@ -338,7 +571,8 @@ def main():
     model.apply(weights_init)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    prediction_error=[] #Average  rotation prediction error in degrees
+    prediction_avarege_error=[] #Average  rotation prediction error in degrees
+    prediction_error_std=[] #Std of error for rotation prediciton
     recon_train_loss=[] # Reconstruction traning loss
     penalty_train_loss=[] # Penalty loss during training
 
@@ -381,7 +615,9 @@ def main():
                 penalty_train_loss.append(pen_loss.item())
 
                 # Average prediction error in degrees
-                prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
+                average, std=rotation_test(args, model, device,train_loader_rotation)
+                prediction_error.append(average)
+                prediction_error_std.append(std)
 
         
         if epoch % 5==0:
@@ -392,17 +628,27 @@ def main():
     #Save losses
     recon_train_loss=np.array(recon_train_loss)
     penalty_train_loss=np.array(penalty_train_loss)
-    prediction_error=np.array(prediction_error)
+    prediction_average_error=np.array(prediction_error)
+    prediction_error_std=np.array(rediction_error_std)
+
+    learning_curves_DataFrame=pd.DataFrame()
+
+    learning_curves_DataFrame['BCE Training Loss']=recon_train_loss
+    learning_curves_DataFrame['Penalty Training Loss']=penalty_train_loss
+    learning_curves_DataFrame['Average Abs error']=prediction_average_error
+    learning_curves_DataFrame['Error STD']=prediction_average_error
+
+    learning_curves_DataFrame.index=learning_curves_DataFrame.index*args.store_interval*args.batch_size
+
+    learning_curves.to_csv(os.path.join(path,'learning_curves.csv'))
+
+    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
+
+    get_error_per_digit(path,batch_size=100, step=5)
 
 
 
-    np.save(path+'/recon_train_loss',recon_train_loss)
-    np.save(path+'/penalty_train_loss',penalty_train_loss)
-    np.save(path+'/rotation_prediction_loss',prediction_error)
-    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error,path)
-
-
-def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
+def plot_learning_curve(args,recon_loss,penatly_loss,average_error,error_std,path):
 
     x_ticks=np.arange(len(recon_loss))*args.store_interval*args.batch_size
     with plt.style.context('ggplot'):
@@ -418,7 +664,9 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         
         ax1.legend()
 
-        ax2.plot(x_ticks,rotation_test_loss,label='Average training prediction error',linewidth=1.25,color='g')
+        line,=ax2.plot(x_ticks,average_error,label='Average Abs training error',linewidth=1.25,color='g')
+        ax2.fill_between(x_ticks,average_error+error_std,average_error+error_std,
+            alpha=0.2,facecolor=line.get_color(),edgecolor=line.get_color())
         ax2.set_ylabel('Degrees',fontsize=10)
         ax2.set_xlabel('Training Examples',fontsize=10)
         ax2.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
