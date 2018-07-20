@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 import pandas as pd
+import struct
 
 import matplotlib
 from scipy.ndimage.interpolation import rotate
