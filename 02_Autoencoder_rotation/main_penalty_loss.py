@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
+import pandas as pd
 
 import matplotlib
 from scipy.ndimage.interpolation import rotate
@@ -23,6 +24,27 @@ def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
          nn.init.xavier_normal_(m.weight)
+
+
+
+
+def rotate_tensor_give_angles(input,angles):
+    """
+    Rotates each image by angles and concatinates them in one tenosr
+    Args:
+        input: [N,c,h,w] **numpy** tensor
+        angles: [D,1]
+    Returns:
+        output [N*D,c,h,w] **numpy** tensor
+    """
+    outputs = []
+    for i in range(input.shape[0]):
+        for angle in angles:
+            output = rotate(input[i,...], 180*angle/np.pi, axes=(1,2), reshape=False)
+            outputs.append(output)
+    return np.stack(outputs, 0)
+
+
 
 
 def rotate_tensor(input,rot_range=np.pi,plot=False):
@@ -229,7 +251,7 @@ def evaluate_model(args,device,model,data_loader):
 def rotation_test(args, model, device, test_loader):
     """
     Test how well the eoncoder discrimates angles
-    return the average error in degrees
+    return the average error and std in degrees
     """
     model.eval()
     with torch.no_grad():
@@ -268,12 +290,17 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            average_error=abs((angles*180/np.pi)-angles_estimate.numpy()).mean()
+            error=angles_estimate.numpy()-(angles*180/np.pi)
+            average_error=error.mean()
+            error_std=error.std(ddof=1)
             break
-    return average_error
+    return average_error,error_std
+
+
 
 
 def main():
+
     # Training settings
     list_of_choices=['mse','abs']
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -346,7 +373,8 @@ def main():
     model.apply(weights_init)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    prediction_error=[] #Average  rotation prediction error in degrees
+    prediction_avarege_error=[] #Average  rotation prediction error in degrees
+    prediction_error_std=[] #Std of error for rotation prediciton
     recon_train_loss=[] # Reconstruction traning loss
     penalty_train_loss=[] # Penalty loss during training
 
@@ -389,7 +417,9 @@ def main():
                 penalty_train_loss.append(pen_loss.item())
 
                 # Average prediction error in degrees
-                prediction_error.append(rotation_test(args, model, device,train_loader_rotation))
+                average, std=rotation_test(args, model, device,train_loader_rotation)
+                prediction_error.append(average)
+                prediction_error_std.append(std)
 
         
         if epoch % 5==0:
@@ -400,17 +430,25 @@ def main():
     #Save losses
     recon_train_loss=np.array(recon_train_loss)
     penalty_train_loss=np.array(penalty_train_loss)
-    prediction_error=np.array(prediction_error)
+    prediction_average_error=np.array(prediction_error)
+    prediction_error_std=np.array(rediction_error_std)
+
+    learning_curves_DataFrame=pd.DataFrame()
+
+    learning_curves_DataFrame['BCE Training Loss']=recon_train_loss
+    learning_curves_DataFrame['Penalty Training Loss']=penalty_train_loss
+    learning_curves_DataFrame['Average Abs error']=prediction_average_error
+    learning_curves_DataFrame['Error STD']=prediction_average_error
+
+    learning_curves_DataFrame.index=learning_curves_DataFrame.index*args.store_interval*args.batch_size
+
+    learning_curves.to_csv(os.path.join(path,'learning_curves.csv'))
+
+    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
 
 
 
-    np.save(path+'/recon_train_loss',recon_train_loss)
-    np.save(path+'/penalty_train_loss',penalty_train_loss)
-    np.save(path+'/rotation_prediction_loss',prediction_error)
-    plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_error,path)
-
-
-def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
+def plot_learning_curve(args,recon_loss,penatly_loss,average_error,error_std,path):
 
     x_ticks=np.arange(len(recon_loss))*args.store_interval*args.batch_size
     with plt.style.context('ggplot'):
@@ -426,7 +464,9 @@ def plot_learning_curve(args,recon_loss,penatly_loss,rotation_test_loss,path):
         
         ax1.legend()
 
-        ax2.plot(x_ticks,rotation_test_loss,label='Average training prediction error',linewidth=1.25,color='g')
+        line,=ax2.plot(x_ticks,average_error,label='Average Abs training error',linewidth=1.25,color='g')
+        ax2.fill_between(x_ticks,average_error+error_std,average_error+error_std,
+            alpha=0.2,facecolor=line.get_color(),edgecolor=line.get_color())
         ax2.set_ylabel('Degrees',fontsize=10)
         ax2.set_xlabel('Training Examples',fontsize=10)
         ax2.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
