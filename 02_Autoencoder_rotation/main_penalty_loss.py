@@ -269,9 +269,15 @@ def rotation_test(args, model, device, test_loader):
             #Compare Angles            
             x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
             y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
-            ndims=x.shape[1]        # get dimensionality of feature space
-            batch_size=x.shape[0]   # get batch_size
-            angles_estimate=torch.zeros(batch_size,1).to(device)   
+           
+
+            #Number of features
+            total_dims=x.shape[1]
+            #Batch size
+            batch_size=x.shape[0]
+
+            #Number of features penalised
+            ndims=round_even(self.proportion*total_dims)  
             #Loop every 2 dimensions
             for i in range(0,ndims-1,2):
                 x_i=x[:,i:i+2]      
@@ -291,6 +297,7 @@ def rotation_test(args, model, device, test_loader):
             error=angles_estimate.numpy()-(angles*180/np.pi)
             average_error=error.mean()
             error_std=error.std(ddof=1)
+
             break
     return average_error,error_std
 
@@ -345,10 +352,14 @@ def get_metrics(model, data_loader,device, step=5):
             
             y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
             
-            ndims=x.shape[1]        # get dimensionality of feature space
             new_batch_size=x.shape[0]   # get augmented batch_size
             
             #Loop every 2 dimensions
+
+             #Number of features
+            total_dims=x.shape[1]
+            #Number of features penalised
+            ndims=round_even(self.proportion*total_dims)  
             
             sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
             sys.stdout.flush()
