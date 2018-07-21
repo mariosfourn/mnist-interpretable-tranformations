@@ -210,7 +210,7 @@ class Penalty_Loss(nn.Module):
         return reg_loss
 
 
-def penalised_loss(output,targets,f_data,f_targets,prop, Lambda):
+def penalised_loss(args,output,targets,f_data,f_targets,prop, Lambda):
     """
     Define penalised loss
     """
@@ -308,8 +308,8 @@ def get_metrics(model, data_loader,device, step,prop):
             #Number of features penalised
             ndims=round_even(prop*total_dims)  
             
-            sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
-            sys.stdout.flush()
+            sys.stdout.write("\r%d%% complete \n" % ((batch_idx * 100)/len(data_loader)))
+            #sys.stdout.flush()
             angles_estimate=torch.zeros(new_batch_size,1).to(device)  
             
        
@@ -395,7 +395,7 @@ def  get_error_per_digit(args,model,batch_size, step,digit,prop):
         batch_size=batch_size, shuffle=False, **kwargs)
 
     sys.stdout.write('Processing digit {} \n'.format(digit))
-    sys.stdout.flush()
+    #sys.stdout.flush()
     results=get_metrics(model, data_loader,device, step,prop)
     mean_abs_error=results[1]
     error_std=results[2]
@@ -512,18 +512,14 @@ def main():
                 output, f_data, f_targets = model(data, targets,angles) 
 
                 #Loss
-                loss,reconstruction_loss,penalty_loss=penalised_loss(output,targets,f_data,f_targets,prop, Lambda)
+                loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets,prop, Lambda)
 
                 # Backprop
                 loss.backward()
                 optimizer.step()
 
                 #Log progress
-                if batch_idx % args.log_interval == 0:
-                    sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
-                        .format(epoch, batch_idx * len(data), len(train_loader.dataset),
-                        100. * batch_idx / len(train_loader), loss.item()))
-                    sys.stdout.flush()
+                
     
         #Save losses
         mean, std= get_error_per_digit(args,model,args.batch_size_eval,args.step,args.digit,prop)
