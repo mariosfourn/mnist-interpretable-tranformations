@@ -18,6 +18,7 @@ from scipy.ndimage.interpolation import rotate
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
+from torch.utils.data import Dataset, DataLoader
 
 from model import Net_Reg
 
@@ -277,9 +278,10 @@ def rotation_test(args, model, device, test_loader):
             total_dims=x.shape[1]
             #Batch size
             batch_size=x.shape[0]
+            angles_estimate=torch.zeros(batch_size,1).to(device)  
 
             #Number of features penalised
-            ndims=round_even(self.proportion*total_dims)  
+            ndims=round_even(args.prop*total_dims)  
             #Loop every 2 dimensions
             for i in range(0,ndims-1,2):
                 x_i=x[:,i:i+2]      
@@ -297,7 +299,7 @@ def rotation_test(args, model, device, test_loader):
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
             error=angles_estimate.numpy()-(angles*180/np.pi)
-            average_error=error.mean()
+            average_error=abs(error).mean()
             error_std=error.std(ddof=1)
 
             break
@@ -312,7 +314,7 @@ def read_idx(filename):
         return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
 
 
-def get_metrics(model, data_loader,device, step=5):
+def get_metrics(args,model, data_loader,device, step):
     """ 
     Returns the average error per step of degrees in the range [0,np.pi]
     Args:
@@ -361,7 +363,7 @@ def get_metrics(model, data_loader,device, step=5):
              #Number of features
             total_dims=x.shape[1]
             #Number of features penalised
-            ndims=round_even(self.proportion*total_dims)  
+            ndims=round_even(args.prop*total_dims)  
             
             sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
             sys.stdout.flush()
@@ -433,17 +435,22 @@ class MNISTDadataset(Dataset):
         return sample
 
 
-def get_error_per_digit(path,batch_size=100, step=5):
+def  get_error_per_digit(args,path,model,batch_size, step):
     """
     Return plots and csv files with the mean error per MNIST digit in the trainign dataset 
     for a range of rotation 
     Args:
         step (scalar):  rotation step in degrees
     """
+    use_cuda = not args.no_cuda and torch.cuda.is_available()
 
+    device = torch.device("cuda" if use_cuda else "cpu")
+
+    # Set up dataloaders
+    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     #Load Dataset for each MNIST digit
     data_loaders={digit:DataLoader (MNISTDadataset('./data/',digit), 
-        batch_size=args.batch_size, shuffle=False, **kwargs) for digit in range(0,10)}
+        batch_size=batch_size, shuffle=False, **kwargs) for digit in range(0,10)}
 
     #Set up DataFrames
     #mean_error = pd.DataFrame()
@@ -453,7 +460,7 @@ def get_error_per_digit(path,batch_size=100, step=5):
     for digit, data_loader in data_loaders.items():
         sys.stdout.write('Processing digit {} \n'.format(digit))
         sys.stdout.flush()
-        results=get_metrics(model,data_loader,device,step)
+        results=get_metrics(args,model, data_loader,device, step)
         #mean_error[digit]=pd.Series(results[0])
         mean_abs_error[digit]= pd.Series(results[1])
         error_std[digit]= pd.Series(results[2])
@@ -508,8 +515,10 @@ def main():
                         help='input batch size for reconstruction testing (default: 10)')
     parser.add_argument('--test-batch-size-rot', type=int, default=1000, metavar='N',
                         help='input batch size for rotation disrcimination testing (default: 1,000)')
-    parser.add_argument('--epochs', type=int, default=100, metavar='N',
-                        help='number of epochs to train (default: 100)')
+    parser.add_argument('--batch-size-eval', type=int, default=100, metavar='N',
+                        help='batch size for evaluation of error on MNSIT digits (default: 100)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N',
+                        help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                         help='learning rate (default: 0.001)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
@@ -530,6 +539,8 @@ def main():
                         help='proportion of feature vector with penalty loss')
     parser.add_argument("--loss",dest='loss',default='mse',
     choices=list_of_choices, help='Decide type of penatly loss, mse (defautl) or abs')  
+    parser.add_argument('--step',type=int, default=5,
+                        help='Size of step in degrees for evaluation of error at end of traning')
     args = parser.parse_args()
 
     # Create save path
@@ -616,7 +627,7 @@ def main():
 
                 # Average prediction error in degrees
                 average, std=rotation_test(args, model, device,train_loader_rotation)
-                prediction_error.append(average)
+                prediction_avarege_error.append(average)
                 prediction_error_std.append(std)
 
         
@@ -628,23 +639,23 @@ def main():
     #Save losses
     recon_train_loss=np.array(recon_train_loss)
     penalty_train_loss=np.array(penalty_train_loss)
-    prediction_average_error=np.array(prediction_error)
-    prediction_error_std=np.array(rediction_error_std)
+    prediction_average_error=np.array(prediction_avarege_error)
+    prediction_error_std=np.array(prediction_error_std)
 
     learning_curves_DataFrame=pd.DataFrame()
 
     learning_curves_DataFrame['BCE Training Loss']=recon_train_loss
     learning_curves_DataFrame['Penalty Training Loss']=penalty_train_loss
     learning_curves_DataFrame['Average Abs error']=prediction_average_error
-    learning_curves_DataFrame['Error STD']=prediction_average_error
+    learning_curves_DataFrame['Error STD']=prediction_error_std
 
     learning_curves_DataFrame.index=learning_curves_DataFrame.index*args.store_interval*args.batch_size
 
-    learning_curves.to_csv(os.path.join(path,'learning_curves.csv'))
+    learning_curves_DataFrame.to_csv(os.path.join(path,'learning_curves.csv'))
 
     plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
 
-    get_error_per_digit(path,batch_size=100, step=5)
+    get_error_per_digit(args,path,model,args.batch_size_eval,args.step)
 
 
 
@@ -665,7 +676,7 @@ def plot_learning_curve(args,recon_loss,penatly_loss,average_error,error_std,pat
         ax1.legend()
 
         line,=ax2.plot(x_ticks,average_error,label='Average Abs training error',linewidth=1.25,color='g')
-        ax2.fill_between(x_ticks,average_error+error_std,average_error+error_std,
+        ax2.fill_between(x_ticks,average_error-error_std,average_error+error_std,
             alpha=0.2,facecolor=line.get_color(),edgecolor=line.get_color())
         ax2.set_ylabel('Degrees',fontsize=10)
         ax2.set_xlabel('Training Examples',fontsize=10)
