@@ -221,6 +221,7 @@ def penalised_loss(args,output,targets,f_data,f_targets,prop, Lambda):
     #Add 
     reconstruction_loss=loss_fnc(output,targets)
     rotation_loss=loss_reg(f_data,f_targets)
+   
     total_loss= reconstruction_loss+Lambda*rotation_loss
     return total_loss,reconstruction_loss,rotation_loss
 
@@ -566,7 +567,7 @@ def get_sample(prop_range=(0.01,0.5),Lambda_range=(1,5)):
 
     samples=np.random.uniform(low,high)
 
-    return (samples[0],samples[1])
+    return (float(samples[0]),float(samples[1]))
 
 
 if __name__ == '__main__':
