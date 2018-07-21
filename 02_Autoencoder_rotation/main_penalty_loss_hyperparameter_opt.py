@@ -537,18 +537,21 @@ def main():
     error_std.index=error_std.index* args.step
 
     #Get area under the curve
-    AUC_df=pd.DataFrame()
+    AUC=np.zeros(args.samples)
+    samples=np.array(samples)
+    AUC_df=pd.DataFrame({'prop':samples[:,0], 'Lambda':samples[:,1]})
 
     for idx, column in  enumerate(average_abs_error.columns):
-        AUC_df[samples[idx][0],samples[idx][1]]=np.trapz(average_abs_error[column],average_abs_error.index)
+        y=average_abs_error[column]
+        y[0]=0.0
+        AUC[idx]=np.trapz(y,average_abs_error.index)
 
+    AUC_df['AUC']=AUC
     average_abs_error.to_csv(os.path.join(path,'average_abs_error.csv'))
     error_std.to_csv(os.path.join(path,'error_std.csv'))
     AUC_df.to_csv(os.path.join(path,'AUC.csv'))
 
-    #Plot figure
 
-    import ipdb; ipdb.set_trace()
 
 def get_sample(prop_range=(0.01,0.5),Lambda_range=(1,5)):
     """
