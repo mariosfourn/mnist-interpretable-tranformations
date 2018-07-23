@@ -310,7 +310,7 @@ def get_metrics(model, data_loader,device, step,prop):
             ndims=round_even(prop*total_dims)  
             
             sys.stdout.write("\r%d%% complete \n" % ((batch_idx * 100)/len(data_loader)))
-            #sys.stdout.flush()
+            sys.stdout.flush()
             angles_estimate=torch.zeros(new_batch_size,1).to(device)  
             
        
@@ -396,7 +396,7 @@ def  get_error_per_digit(args,model,batch_size, step,digit,prop):
         batch_size=batch_size, shuffle=False, **kwargs)
 
     sys.stdout.write('Processing digit {} \n'.format(digit))
-    #sys.stdout.flush()
+    sys.stdout.flush()
     results=get_metrics(model, data_loader,device, step,prop)
     mean_abs_error=results[1]
     error_std=results[2]
@@ -483,6 +483,8 @@ def main():
     samples=[]
 
     for iter in range(args.samples):
+        sys.stdout.write('Start training model {}/{}\n'.format(iter+1,args.samples))
+        sys.stdout.flush()
 
         # Init model and optimizer
         prop, Lambda= get_sample()
@@ -496,8 +498,12 @@ def main():
         model.apply(weights_init)
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+
+
         # Where the magic happens
         for epoch in range(1, args.epochs + 1):
+            sys.stdout.write('Epoch {}/{} \n '.format(epoch,args.epochs))
+            sys.stdout.flush()
             for batch_idx, (data, target) in enumerate(train_loader):
                 model.train()
                 # Reshape data
@@ -523,6 +529,8 @@ def main():
                 
     
         #Save losses
+        sys.stdout.write('Starting evaluation \n')
+        sys.stdout.flush()
         mean, std= get_error_per_digit(args,model,args.batch_size_eval,args.step,args.digit,prop)
 
         average_abs_error[model_name]=mean
