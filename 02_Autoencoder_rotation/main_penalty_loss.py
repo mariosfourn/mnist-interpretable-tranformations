@@ -245,7 +245,7 @@ def evaluate_model(args,device,model,data_loader):
     """
     model.eval()
     with torch.no_grad():
-        for data, targets in data_loader:
+        for data,_ in data_loader:
             # Reshape data
             data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
             data = torch.from_numpy(data).to(device)
@@ -558,14 +558,16 @@ def main():
      
     parser.add_argument('--step',type=int, default=5,
                         help='Size of step in degrees for evaluation of error at end of traning')
-    parser.add_argument('--init-rot-range',type=float, default=2*np.pi,
-                        help='Upper bound of range of initial random rotation of digits, (Default=2*np.pi)')
-    parser.add_argument('--relative-rot-range',type=float, default=np.pi/2,
-                        help='Upper bound of range of relative rotation between digits (Default=np.pi/2)')
+    parser.add_argument('--init-rot-range',type=float, default=360,
+                        help='Upper bound of range in degrees of initial random rotation of digits, (Default=360)')
+    parser.add_argument('--relative-rot-range',type=float, default=90,
+                        help='Upper bound of range in degrees of relative rotation between digits (Default=0)')
 
     args = parser.parse_args()
 
     # Create save path
+    args.init_rot_range=args.init_rot_range*np.pi/180
+    args.relative_rot_range= args.relative_rot_range*np.pi/180
     path = "./output_" +args.name
     if not os.path.exists(path):
         os.makedirs(path)
