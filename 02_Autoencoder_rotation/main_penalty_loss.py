@@ -313,7 +313,7 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            error=angles_estimate.numpy()-(angles.numpy()*180/np.pi)
+            error=angles_estimate.numpy()-(angles.cpu().numpy()*180/np.pi)
             average_error=abs(error).mean()
             error_std=error.std(ddof=1)
 
@@ -331,7 +331,7 @@ def read_idx(filename):
 
 def get_metrics(args,model, data_loader,device, step):
     """ 
-    Returns the average error per step of degrees in the range [0,np.pi]
+    Returns the average error per step of degrees in the range [0,args.relative_rot_range]
     Args:
         model : pytorch Net_Reg model
         data_loader
@@ -340,7 +340,8 @@ def get_metrics(args,model, data_loader,device, step):
     """
     #turn step to radians
     step=np.pi*step/180
-    entries=int(np.pi/step)
+    #Numbe of steps 
+    entries=int(args.relative_rot_range/step)
     model.eval()
     errors=np.zeros((entries,len(data_loader.dataset)))
     
@@ -650,13 +651,10 @@ def main():
                 average, std=rotation_test(args, model, device,train_loader_rotation)
                 prediction_avarege_error.append(average)
                 prediction_error_std.append(std)
-
-                break
-
         
         if epoch % 5==0:
             #Test reconstruction by printing image
-            reconstruction_test(args, model, device,train_loader_recon, epoch)
+            reconstruction_test(args, model, device,train_loader_recon, epoch, args.relative_rot_range)
     #Save model
     save_model(args,model)
     #Save losses
