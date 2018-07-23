@@ -553,12 +553,13 @@ def main():
     parser.add_argument('--prop',type=float, default=1.0,
                         help='proportion of feature vector with penalty loss')
     parser.add_argument("--loss",dest='loss',default='mse',
-    choices=list_of_choices, help='Decide type of penatly loss, mse (Default) or abs')  
+    choices=list_of_choices, help='Decide type of penatly loss, mse (Default) or abs') 
+     
     parser.add_argument('--step',type=int, default=5,
                         help='Size of step in degrees for evaluation of error at end of traning')
-    parser.add_argument('--init-rot-range',type=int, default=5,
+    parser.add_argument('--init-rot-range',type=float, default=2*np.pi,
                         help='Upper bound of range of initial random rotation of digits, (Default=2*np.pi)')
-    parser.add_argument('--relative-rot-range',type=int, default=5,
+    parser.add_argument('--relative-rot-range',type=float, default=np.pi/2,
                         help='Upper bound of range of relative rotation between digits (Default=np.pi/2)')
 
     args = parser.parse_args()
