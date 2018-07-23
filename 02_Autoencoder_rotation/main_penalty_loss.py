@@ -47,57 +47,71 @@ def rotate_tensor_give_angles(input,angles):
     return np.stack(outputs, 0)
 
 
-def rotate_tensor(input,rot_range=np.pi,plot=False):
+def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
     """
-    Rotate input tensor in range [0, rot_range] randomnly
-
+    Rotate the image
     Args:
         input: [N,c,h,w] **numpy** tensor
+        init_rot_range:     (scalar) the range of ground truth rotation
+        relative_rot_range: (scalar) the range of relative rotations
+        plot: (flag)         plot the original and rotated digits
     Returns:
-        rotated output and angles in radians
+        outputs1: [N,c,h,w]  input rotated by offset angle
+        outputs2: [N,c,h,w]  input rotated by offset angle + relative angle [0, rot_range]
+        relative angele [N,1] relative angle between outputs1 and outputs 2 in radians
     """
-    angles = rot_range*np.random.rand(input.shape[0])
-    angles = angles.astype(np.float32)
-    outputs = []
-    for i in range(input.shape[0]):
-        output = rotate(input[i,...], 180*angles[i]/np.pi, axes=(1,2), reshape=False)
-        outputs.append(output)
+    #Define offest angle of input
+    offset_angles=init_rot_range*np.random.rand(input.shape[0])
+    offset_angles=offset_angles.astype(np.float32)
 
-    outputs=np.stack(outputs, 0)
+    #Define relative angle
+    relative_angles=relative_rot_range*np.random.rand(input.shape[0])
+    relative_angles=relative_angles.astype(np.float32)
+
+    outputs1=[]
+    outputs2=[]
+    for i in range(input.shape[0]):
+        output1 = rotate(input[i,...], 180*offset_angles[i]/np.pi, axes=(1,2), reshape=False)
+        output2 = rotate(input[i,...], 180*(offset_angles[i]+relative_angles[i])/np.pi, axes=(1,2), reshape=False)
+        outputs1.append(output1)
+        outputs2.append(output2)
+
+    outputs1=np.stack(outputs1, 0)
+    outputs2=np.stack(outputs2, 0)
+
     if plot:
-        #Create a grid plot with original and scaled images
+        #Create of output1 and outputs1
         N=input.shape[0]
         rows=int(np.floor(N**0.5))
         cols=N//rows
-
         plt.figure()
-
-        for j in range(rows*cols):
+        for j in range(N):
             plt.subplot(rows,cols,j+1)
-            if input.shape[1]>1:
-                image=input[j].transpose(1,2,0)
+            if outputs1.shape[1]>1:
+                image=outputs1[j].transpose(1,2,0)
             else:
-                image=input[j,0]
+                image=outputs1[j,0]
 
             plt.imshow(image, cmap='gray')
             plt.grid(False)
+            plt.title(r'$\theta$={:.1f}'.format(offset_angles[j]*180/np.pi), fontsize=6)
             plt.axis('off')
         #Create new figure with rotated
         plt.figure(figsize=(7,7))
-        for j in range(rows*cols):
+        for j in range(N):
             plt.subplot(rows,cols,j+1)
             if input.shape[1]>1:
-                image=outputs[j].transpose(1,2,0)
+                image=outputs2[j].transpose(1,2,0)
             else:
-                image=outputs[j,0]
+                image=outputs2[j,0]
             plt.imshow(image, cmap='gray')
             plt.axis('off')
-            plt.title(r'$\theta$={:.1f}'.format( angles[j]*180/np.pi), fontsize=6)
+            plt.title(r'$\theta$={:.1f}'.format( (offset_angles[i]+relative_angles[i])*180/np.pi), fontsize=6)
             plt.grid(False)
         plt.tight_layout()      
         plt.show()
 
-    return outputs, angles
+    return outputs1, outputs2, relative_angles
 
 
 def save_model(args,model):
@@ -233,13 +247,13 @@ def evaluate_model(args,device,model,data_loader):
     with torch.no_grad():
         for data, targets in data_loader:
             # Reshape data
-            targets, angles = rotate_tensor(data.numpy())
+            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
+            data = torch.from_numpy(data).to(device)
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
 
             # Forward pass
-            data = data.to(device)
            
             output, f_data, f_targets = model(data, targets,angles) #for feature vector
             loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets)
@@ -256,18 +270,19 @@ def rotation_test(args, model, device, test_loader):
     """
     model.eval()
     with torch.no_grad():
-        for data, target in test_loader:
+        for data, _ in test_loader:
             
 
-            target,angles = rotate_tensor(data.numpy())
-            angles=angles.reshape(-1,1)
-            data=data.to(device)
-            target = torch.from_numpy(target).to(device)
+            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
+            data = torch.from_numpy(data).to(device)
+            targets = torch.from_numpy(targets).to(device)
+            angles = torch.from_numpy(angles).to(device)
+            angles = angles.view(angles.size(0), 1)
             
             #Get Feature vector for original and tranformed image
-
+            
             x=model.encoder(data) #Feature vector of data
-            y=model.encoder(target) #Feature vector of targets
+            y=model.encoder(targets) #Feature vector of targets
 
             #Compare Angles            
             x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
@@ -298,7 +313,7 @@ def rotation_test(args, model, device, test_loader):
 
             angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
             angles_estimate=angles_estimate.cpu()
-            error=angles_estimate.numpy()-(angles*180/np.pi)
+            error=angles_estimate.numpy()-(angles.numpy()*180/np.pi)
             average_error=abs(error).mean()
             error_std=error.std(ddof=1)
 
@@ -336,7 +351,7 @@ def get_metrics(args,model, data_loader,device, step):
         for batch_idx,data in enumerate(data_loader):
             
             batch_size=data.shape[0]
-            angles = torch.arange(0, np.pi, step=step)
+            angles = torch.arange(0, args.relative_rot_range, step=step)
             target = rotate_tensor_give_angles(data.numpy(),angles.numpy())
             data=data.to(device)
 
@@ -365,8 +380,8 @@ def get_metrics(args,model, data_loader,device, step):
             #Number of features penalised
             ndims=round_even(args.prop*total_dims)  
             
-            sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
-            sys.stdout.flush()
+            #sys.stdout.write("\r%d%% complete" % ((batch_idx * 100)/len(data_loader)))
+            #sys.stdout.flush()
             angles_estimate=torch.zeros(new_batch_size,1).to(device)  
             
        
@@ -538,9 +553,14 @@ def main():
     parser.add_argument('--prop',type=float, default=1.0,
                         help='proportion of feature vector with penalty loss')
     parser.add_argument("--loss",dest='loss',default='mse',
-    choices=list_of_choices, help='Decide type of penatly loss, mse (defautl) or abs')  
+    choices=list_of_choices, help='Decide type of penatly loss, mse (Default) or abs')  
     parser.add_argument('--step',type=int, default=5,
                         help='Size of step in degrees for evaluation of error at end of traning')
+    parser.add_argument('--init-rot-range',type=int, default=5,
+                        help='Upper bound of range of initial random rotation of digits, (Default=2*np.pi)')
+    parser.add_argument('--relative-rot-range',type=int, default=5,
+                        help='Upper bound of range of relative rotation between digits (Default=np.pi/2)')
+
     args = parser.parse_args()
 
     # Create save path
@@ -589,16 +609,16 @@ def main():
 
     # Where the magic happens
     for epoch in range(1, args.epochs + 1):
-        for batch_idx, (data, target) in enumerate(train_loader):
+        for batch_idx, (data, _) in enumerate(train_loader):
             model.train()
             # Reshape data
-            targets, angles = rotate_tensor(data.numpy())
+            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
+            data = torch.from_numpy(data).to(device)
             targets = torch.from_numpy(targets).to(device)
             angles = torch.from_numpy(angles).to(device)
             angles = angles.view(angles.size(0), 1)
 
             # Forward pass
-            data = data.to(device)
             optimizer.zero_grad()
             #(output of autoencoder, feature vector of input, feature vector of rotated data)
             output, f_data, f_targets = model(data, targets,angles) 
@@ -629,6 +649,8 @@ def main():
                 average, std=rotation_test(args, model, device,train_loader_rotation)
                 prediction_avarege_error.append(average)
                 prediction_error_std.append(std)
+
+                break
 
         
         if epoch % 5==0:
