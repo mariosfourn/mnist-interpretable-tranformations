@@ -482,9 +482,9 @@ def main():
     prop_list=[1.0, 0.6, 0.4, 0.2, 0.1]
     Lambda_list=[1.0, 2.0, 3.0, 4.0, 5.0]
     combinations=[]
-
-    for prop, Lambda in itertools.product(prop_list,Lambda_list)
-        sys.stdout.write('Start training model {}/{}\n'.format(iter+1,args.samples))
+    num_iter=len(list(itertools.product(prop_list,Lambda_list)))
+    for iter,(prop, Lambda) in enumerate(itertools.product(prop_list,Lambda_list)):
+        sys.stdout.write('Start training model {}/{}\n'.format(iter+1,num_iter))
         sys.stdout.flush()
 
         # Init model and optimizer
