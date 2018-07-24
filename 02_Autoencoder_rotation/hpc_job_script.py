@@ -9,6 +9,11 @@ import os
 import sys
 import logging
 
+BASE ='LD_LIBRARY_PATH="/share/apps/libc6_2.23/lib/x86_64-linux-gnu:/share/apps/libc6_2.23/lib64:/\
+share/apps/gcc-6.2.0/lib64:/share/apps/gcc-6.2.0/lib:/share/apps/python-3.6.5-shared/lib:/share/apps/\
+cuda-9.0/lib64:$\{LD_LIBRARY_PATH\}" /share/apps/libc6_2.23/lib/x86_64-linux-gnu/\
+ld-2.23.so $(command -v /share/apps/python-3.6.5-shared/bin/python3) ' 
+
 
 def cartesian_product(dicts):
     return list(dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
@@ -30,17 +35,13 @@ def to_cmd(c):
     #     command = 'PYTHONPATH=. python3-gpu {}/main.py {} ' \
     #     '--file_name {} ' \ this is for command if I want tensorboard
 
-    command = "LD_LIBRARY_PATH='/share/apps/libc6_2.23/lib/x86_64-linux-gnu:/share/apps/libc6_2.23/lib64:\
-    /share/apps/gcc-6.2.0/lib64:/share/apps/gcc-6.2.0/lib:/share/apps/python\
-    -3.6.5-shared/lib:/share/apps/cuda-9.0/lib64:${LD_LIBRARY_PATH}'"+ "/share\
-    /apps/libc6_2.23/lib/x86_64-linux-gnu/ld-2.23.so $(command -v /share/apps\
-    /python-3.6.5-shared/bin/python3) {}/main_penalty_loss.py  \
-              --Lambda {} \
-              --prop {} \
-              --init-rot-range {}  \
-              --relative-rot-range {}  \
-              --epochs {} " \
-        .format(path,
+    command =BASE+" ".join([
+        "{}/main_penalty_loss.py",
+        "--Lambda {}",
+        "--prop {}",
+        "--init-rot-range {} ",
+        "--relative-rot-range {} ",
+        "--epochs {} "]).format(path,
                 #                 params,
                 #                 set_to_path[c['instances']],
                 c['Lambda'],
@@ -111,19 +112,17 @@ def main(_):
 #$ -o /home/mfournar/output/array.o.log
 #$ -e /home/mfournar/output/array.e.log
 #$ -l tmem=16G
+#$ -t 1-{}
 #$ -l h_rt=2:00:00
 #$ -ac allow=LMNOPQSTU
 #$ -l gpu=1
 #$ -P gpu
 
-#$ -j y
-
-
 
 export LANG="en_US.utf8"
 export LANGUAGE="en_US:en"
 
-cd /home/mfournar/mnist-interpretable-tranformations/02_Autoencoder_rotation
+cd /home/mfournar/mnist-interpretable-tranformations/02_Autoencoder_rotation/
 
 source /share/apps/examples/python/python-3.6.5.source
 source /share/apps/examples/cuda/cuda-9.0.source
@@ -135,7 +134,7 @@ source /share/apps/examples/cuda/cuda-9.0.source
     #repeat each job three times
 
     for job_id, command_line in enumerate(sorted_command_lines, 1):
-        print('test $SGE_TASK_ID -eq {} && {}'.format(job_id,command_line))
+        print('test $SGE_TASK_ID -eq {} && {}\n'.format(job_id,command_line))
 
 
 if __name__ == '__main__':
