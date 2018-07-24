@@ -68,6 +68,7 @@ def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
     relative_angles=relative_rot_range*np.random.rand(input.shape[0])
     relative_angles=relative_angles.astype(np.float32)
 
+
     outputs1=[]
     outputs2=[]
     for i in range(input.shape[0]):
@@ -465,6 +466,7 @@ def  get_error_per_digit(args,path,model,batch_size, step):
     # Set up dataloaders
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     #Load Dataset for each MNIST digit
+
     data_loaders={digit:DataLoader (MNISTDadataset('./data/',digit), 
         batch_size=batch_size, shuffle=False, **kwargs) for digit in range(0,10)}
 
@@ -547,8 +549,8 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--store-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before storing training loss')
-    parser.add_argument('--Lambda',type=float, default=0.1, metavar='Lambda',
-                        help='proportion of penalty loss of the total loss (default=0.1)')
+    parser.add_argument('--Lambda',type=float, default=1.0, metavar='Lambda',
+                        help='proportion of penalty loss of the total loss (default=1.0)')
     parser.add_argument('--name', type=str, default='',
                         help='name of the run that is added to the output directory')
     parser.add_argument('--prop',type=float, default=1.0,
@@ -558,10 +560,11 @@ def main():
      
     parser.add_argument('--step',type=int, default=5,
                         help='Size of step in degrees for evaluation of error at end of traning')
-    parser.add_argument('--init-rot-range',type=float, default=360,
-                        help='Upper bound of range in degrees of initial random rotation of digits, (Default=360)')
-    parser.add_argument('--relative-rot-range',type=float, default=90,
-                        help='Upper bound of range in degrees of relative rotation between digits (Default=0)')
+    parser.add_argument('--init-rot-range',type=float, default=0,
+                        help='Upper bound of range in degrees of initial random rotation of digits, (Default=0)')
+    parser.add_argument('--relative-rot-range',type=float, default=180,
+                        help='Upper bound of range in degrees of relative rotation between digits (Default=180)')
+
 
     args = parser.parse_args()
 
@@ -612,7 +615,11 @@ def main():
     penalty_train_loss=[] # Penalty loss during training
 
     # Where the magic happens
+    sys.stdout.write('Start training\n')
+    sys.stdout.flush()
     for epoch in range(1, args.epochs + 1):
+        sys.stdout.write('Epoch {}/{} \n '.format(epoch,args.epochs))
+        sys.stdout.flush()
         for batch_idx, (data, _) in enumerate(train_loader):
             model.train()
             # Reshape data
@@ -635,11 +642,11 @@ def main():
             optimizer.step()
 
             #Log progress
-            if batch_idx % args.log_interval == 0:
-                sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
-                    .format(epoch, batch_idx * len(data), len(train_loader.dataset),
-                    100. * batch_idx / len(train_loader), loss.item()))
-                sys.stdout.flush()
+            #if batch_idx % args.log_interval == 0:
+                #sys.stdout.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\r'
+                #    .format(epoch, batch_idx * len(data), len(train_loader.dataset),
+                #    100. * batch_idx / len(train_loader), loss.item()))
+                #sys.stdout.flush()
 
             #Store training and test loss
             if batch_idx % args.store_interval==0:
@@ -677,7 +684,8 @@ def main():
     learning_curves_DataFrame.to_csv(os.path.join(path,'learning_curves.csv'))
 
     plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
-
+    sys.stdout.write('Starting evaluation \n')
+    sys.stdout.flush()
     get_error_per_digit(args,path,model,args.batch_size_eval,args.step)
 
 
