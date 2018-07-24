@@ -1,6 +1,7 @@
 from __future__ import print_function
 import os
 import sys
+import itertools
 import time
 
 import argparse
@@ -408,10 +409,8 @@ def main():
     # Training settings
     list_of_choices=['mse','abs']
     parser = argparse.ArgumentParser(description='Hyper-Parametere optimisation')
-    parser.add_argument('--digit', type=int, default=1,
-                        help='digit to be used for evaluation metrics (default=1')
-    parser.add_argument('--samples', type=int, default=20,
-                        help='samples from hyperparamter join distribution (default=20')
+    parser.add_argument('--digit', type=int, default=5,
+                        help='digit to be used for evaluation metrics (default=5') 
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size-recon', type=int, default=10, metavar='N',
@@ -480,15 +479,17 @@ def main():
 
     average_abs_error=pd.DataFrame()
     error_std=pd.DataFrame()
-    samples=[]
+    prop_list=[1.0, 0.6, 0.4, 0.2, 0.1]
+    Lambda_list=[1.0, 2.0, 3.0, 4.0, 5.0]
+    combinations=[]
 
-    for iter in range(args.samples):
+    for prop, Lambda in itertools.product(prop_list,Lambda_list)
         sys.stdout.write('Start training model {}/{}\n'.format(iter+1,args.samples))
         sys.stdout.flush()
 
         # Init model and optimizer
-        prop, Lambda= get_sample()
-        samples.append([prop, Lambda])
+        #prop, Lambda= get_sample()
+        combinations.append([prop, Lambda])
 
         model_name='pror_{:.2f}_Lambda_{:.2f}'.format(prop, Lambda)
 
