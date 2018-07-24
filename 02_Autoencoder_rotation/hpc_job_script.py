@@ -65,9 +65,9 @@ def main(_):
     hyperparameters_space = dict(
         Lambda=[1.0,2.0], #Lambda
         prop=[1.0,2.0], #prop
-        init_rot_range=[0,90], #init_rot_range
+        init_rot_range=[0,0], #init_rot_range
         relative_rot_range=[180,180], #relative_rot_range
-        epochs= [20] #epochs
+        epochs= [0,0] #epochs
     )
 
     configurations = cartesian_product(hyperparameters_space)
@@ -93,7 +93,7 @@ def main(_):
                 completed = 'Training finished' in content
 
         if not completed:
-            command_line = '--name {} {} >> {} 2>&1'.format(filename(cfg),to_cmd(cfg), logfile)
+            command_line = ' {} --name {} >> {} 2>&1'.format(to_cmd(cfg),filename(cfg), logfile)
             command_lines |= {command_line}
 
     # Sort command lines and remove duplicates
