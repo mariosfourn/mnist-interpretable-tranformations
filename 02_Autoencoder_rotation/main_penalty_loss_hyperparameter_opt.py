@@ -479,12 +479,16 @@ def main():
 
     average_abs_error=pd.DataFrame()
     error_std=pd.DataFrame()
+
     prop_list=[1.0, 0.6, 0.4, 0.2, 0.1]
+
     Lambda_list=[1.0, 2.0, 3.0, 4.0, 5.0]
+
     combinations=[]
-    num_iter=len(list(itertools.product(prop_list,Lambda_list)))
+
+    num_iters=len(list(itertools.product(prop_list,Lambda_list)))
     for iter,(prop, Lambda) in enumerate(itertools.product(prop_list,Lambda_list)):
-        sys.stdout.write('Start training model {}/{}\n'.format(iter+1,num_iter))
+        sys.stdout.write('Start training model {}/{}\n'.format(iter+1,num_iters))
         sys.stdout.flush()
 
         # Init model and optimizer
@@ -525,6 +529,7 @@ def main():
                 # Backprop
                 loss.backward()
                 optimizer.step()
+    
 
                 #Log progress
                 
@@ -537,15 +542,20 @@ def main():
         average_abs_error[model_name]=mean
         error_std[model_name]=std
 
+        #Ovewrite CSV in case run fails
+        average_abs_error.to_csv(os.path.join(path,'average_abs_error.csv'))
+        error_std.to_csv(os.path.join(path,'error_std.csv'))
+
+
 
     #Change index
-    average_abs_error.index=average_abs_error.index* args.step
-    error_std.index=error_std.index* args.step
+    average_abs_error.index=average_abs_error.index * args.step
+    error_std.index=error_std.index * args.step
 
     #Get area under the curve
-    AUC=np.zeros(args.samples)
-    samples=np.array(samples)
-    AUC_df=pd.DataFrame({'prop':samples[:,0], 'Lambda':samples[:,1]})
+    AUC=np.zeros(num_iters)
+    combinations=np.array(combinations)
+    AUC_df=pd.DataFrame({'prop':combinations[:,0], 'Lambda':combinations[:,1]})
 
     for idx, column in  enumerate(average_abs_error.columns):
         y=average_abs_error[column]
@@ -553,6 +563,8 @@ def main():
         AUC[idx]=np.trapz(y,average_abs_error.index)
 
     AUC_df['AUC']=AUC
+
+    #Write final CSVs
     average_abs_error.to_csv(os.path.join(path,'average_abs_error.csv'))
     error_std.to_csv(os.path.join(path,'error_std.csv'))
     AUC_df.to_csv(os.path.join(path,'AUC.csv'))
