@@ -122,11 +122,10 @@ def save_model(args,model,epoch):
     model:  pytorch model
     """
     path='./model_'+args.name
-    import os
     if not os.path.exists(path):
       os.mkdir(path)
     model_name='checkpoint_epoch={}'.format(epoch)
-    filepath=sys.path.join(path,model_name)
+    filepath=os.path.join(path,model_name)
     torch.save(model.state_dict(), filepath)
 
 
