@@ -115,7 +115,7 @@ def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
     return outputs1, outputs2, relative_angles
 
 
-def save_model(args,model):
+def save_model(args,model,epoch):
     """
     saves a checkpoint so that model weight can later be used for inference
     Args:
@@ -125,7 +125,9 @@ def save_model(args,model):
     import os
     if not os.path.exists(path):
       os.mkdir(path)
-    torch.save(model.state_dict(), path+'/checkpoint.pt')
+    model_name='checkpoint_epoch={}'.format{epoch}
+    filepath=sys.path.join(path,model_name)
+    torch.save(model.state_dict(), filepath)
 
 
 def reconstruction_test(args, model, device, test_loader, epoch,rot_range=np.pi):
@@ -215,11 +217,16 @@ class Penalty_Loss(nn.Module):
             x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
             y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
 
-            if type=='mse':
+            if self.type=='mse':
                 reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
-            else:
+            elif self.type=='abs':
                 reg_loss+=(abs(dot_prod/(x_norm*y_norm)-1)).sum()
-                
+            elif self.type=='L2_norm':
+                forb_distance=torch.nn.PairwiseDistance()
+                x_polar=x_i/x_norm
+                y_polar=y_i/y_norm
+                reg_loss+=(forb_distance(x_polar,y_polar)**2).sum()
+           
         if self.size_average:
             reg_loss=reg_loss/x.shape[0]/(ndims//2)
         return reg_loss
@@ -525,7 +532,8 @@ def  get_error_per_digit(args,path,model,batch_size, step):
 def main():
 
     # Training settings
-    list_of_choices=['mse','abs']
+    list_of_choices=['mse','abs','L2_norm']
+    
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
@@ -665,7 +673,7 @@ def main():
             #Test reconstruction by printing image
             reconstruction_test(args, model, device,train_loader_recon, epoch, args.relative_rot_range)
     #Save model
-    save_model(args,model)
+    save_model(args,model,epoch)
     #Save losses
     recon_train_loss=np.array(recon_train_loss)
     penalty_train_loss=np.array(penalty_train_loss)
