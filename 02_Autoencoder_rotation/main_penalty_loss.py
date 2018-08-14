@@ -125,7 +125,7 @@ def save_model(args,model,epoch):
     import os
     if not os.path.exists(path):
       os.mkdir(path)
-    model_name='checkpoint_epoch={}'.format{epoch}
+    model_name='checkpoint_epoch={}'.format(epoch)
     filepath=sys.path.join(path,model_name)
     torch.save(model.state_dict(), filepath)
 
@@ -699,7 +699,7 @@ def main():
     plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
     sys.stdout.write('Starting evaluation \n')
     sys.stdout.flush()
-    get_error_per_digit(args,path,model,args.batch_size_eval,args.step)
+    #get_error_per_digit(args,path,model,args.batch_size_eval,args.step)
 
 
 
