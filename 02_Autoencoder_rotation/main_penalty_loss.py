@@ -574,7 +574,12 @@ def main():
                         help='Upper bound of range in degrees of relative rotation between digits (Default=180)')
 
 
+    #Print arguments
     args = parser.parse_args()
+
+    for arg in vars(args):
+        sys.stdout.write('{} = {} \n'.format(arg,  getattr(args, arg)))
+        sys.stdout.flush()
 
     # Create save path
     args.init_rot_range=args.init_rot_range*np.pi/180
