@@ -42,7 +42,7 @@ def feature_transformer(input, params,device):
         [N,c] tensor
     """
     # First reshape activations into [N,c/2,2,1] matrices
-    x = input.view(input.size(0),input.size(1)/2,2,1)
+    x = input.view(input.size(0),input.size(1)//2,2,1)
     # Construct the transformation matrix
     sin = torch.sin(params)
     cos = torch.cos(params)
@@ -66,7 +66,7 @@ def inverse_feature_transformer(input, params,device):
         [N,c] tensor
     """
     # First reshape activations into [N,c/2,2,1] matrices
-    x = input.view(input.size(0),input.size(1)/2,2,1)
+    x = input.view(input.size(0),input.size(1)//2,2,1)
     # Construct the transformation matrix
     sin = torch.sin(params)
     cos = torch.cos(params)
@@ -99,6 +99,7 @@ class Net_Reg(nn.Module):
         """
         #Encoder 
         f=self.encoder(x) #feature vector for original image
+
         f_theta=inverse_feature_transformer(self.encoder(y), params,self.device) # feature vector for tranformed image
 
         #Feature transform layer
