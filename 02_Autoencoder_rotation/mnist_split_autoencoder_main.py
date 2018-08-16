@@ -21,7 +21,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import Dataset, DataLoader
 from tensorboardX import SummaryWriter
 
-from model_v2 import Autoencoder_Split
+from model_v2 import Autoencoder_Split,Autoencoder_SplitMLP
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -150,7 +150,7 @@ def reconstruction_test(args, model, test_loader, epoch,rot_range,path):
             output,_,_ = model(data, target, angles)
             break
         output = output.cpu()
-        save_images(args,output, epoch,path)
+        save_images(args, path, output, epoch)
 
 
 def save_images(args,path,images, epoch, nrow=None):
@@ -177,60 +177,60 @@ def round_even(x):
 
 
 
-class EucledianVectorLoss(nn.Module):
-    """
-    Penalty loss on feature vector to ensure that in encodes rotation information
-    """
+# class EucledianVectorLoss(nn.Module):
+#     """
+#     Penalty loss on feature vector to ensure that in encodes rotation information
+#     """
     
-    def __init__(self, type , size_average=True):
-        super(EucledianVectorLoss,self).__init__()
-        self.size_average=size_average #flag for mena loss
-        self.type=type
+#     def __init__(self, type , size_average=True):
+#         super(EucledianVectorLoss,self).__init__()
+#         self.size_average=size_average #flag for mena loss
+#         self.type=type
         
-    def forward(self,x,y):
-        """
-        penalty loss bases on cosine similarity being 1
+#     def forward(self,x,y):
+#         """
+#         penalty loss bases on cosine similarity being 1
 
-        Args:
-            x: [batch,ndims]
-            y: [batch,ndims]
-        """
-        # x=x.view(x.shape[0],-1)
-        # y=y.view(y.shape[0],-1)
-        #Number of features
-        ndims=x.shape[1]
-        #Batch size
+#         Args:
+#             x: [batch,ndims]
+#             y: [batch,ndims]
+#         """
+#         # x=x.view(x.shape[0],-1)
+#         # y=y.view(y.shape[0],-1)
+#         #Number of features
+#         ndims=x.shape[1]
+#         #Batch size
 
 
-        reg_loss=0.0
+#         reg_loss=0.0
 
-        cosine_similarity=nn.CosineSimilarity(dim=2)
+#         cosine_similarity=nn.CosineSimilarity(dim=2)
 
-        for i in range(0,ndims-1,2):
-            x_i=x[:,i:i+2]
-            y_i=y[:,i:i+2]
-            # dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
-            # x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
-            # y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
+#         for i in range(0,ndims-1,2):
+#             x_i=x[:,i:i+2]
+#             y_i=y[:,i:i+2]
+#             # dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
+#             # x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
+#             # y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
 
-            if self.type=='mse':
-                reg_loss+= ((cosine_similarity(x_i.view(x_i.size(0),1,2),y_i.view(y_i.size(0),1,2))-1.0)**2).sum()
-                #reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
-            elif self.type=='abs':
+#             if self.type=='mse':
+#                 reg_loss+= ((cosine_similarity(x_i.view(x_i.size(0),1,2),y_i.view(y_i.size(0),1,2))-1.0)**2).sum()
+#                 #reg_loss+=((dot_prod/(x_norm*y_norm)-1)**2).sum()
+#             elif self.type=='abs':
                
-                reg_loss+= torch.abs(cosine_similarity(x_i.view(x_i.size(0),1,2),y_i.view(y_i.size(0),1,2))-1.0).sum()
-                #eg_loss+=(abs(dot_prod/(x_norm*y_norm)-1)).sum()
+#                 reg_loss+= torch.abs(cosine_similarity(x_i.view(x_i.size(0),1,2),y_i.view(y_i.size(0),1,2))-1.0).sum()
+#                 #eg_loss+=(abs(dot_prod/(x_norm*y_norm)-1)).sum()
               
-            elif self.type=='L2_norm':
-                forb_distance=torch.nn.PairwiseDistance()
-                x_polar=x_i/torch.maximum(x_norm, 1e-08)
-                y_polar=y_i/torch.maximum(y_norm,1e-08)
-                reg_loss+=(forb_distance(x_polar,y_polar)**2).sum()
+#             elif self.type=='L2_norm':
+#                 forb_distance=torch.nn.PairwiseDistance()
+#                 x_polar=x_i/torch.maximum(x_norm, 1e-08)
+#                 y_polar=y_i/torch.maximum(y_norm,1e-08)
+#                 reg_loss+=(forb_distance(x_polar,y_polar)**2).sum()
            
-        if self.size_average:
-            reg_loss=reg_loss/x.shape[0]/(ndims//2)
+#         if self.size_average:
+#             reg_loss=reg_loss/x.shape[0]/(ndims//2)
 
-        return reg_loss
+#         return reg_loss
 
 
 
@@ -269,7 +269,7 @@ def triple_loss(args,targets, output,identity, eucledian):
     cosine_similarity=nn.CosineSimilarity(dim=2)
 
     rotation_loss=torch.abs(cosine_similarity(x_eucledian.view(x_eucledian.size(0),1,2),
-        y_eucledian.view(y_eucledian.size(0),1,2))-1.0).sum()
+        y_eucledian.view(y_eucledian.size(0),1,2))-1.0).mean()
 
     # rotation_loss=eucledian_loss(x_eucledian,y_eucledian)
 
@@ -308,183 +308,11 @@ def evaluate_model(args,model,data_loader):
     return reconstruction_loss,penalty_loss
  
 
-
-def rotation_test(args, model, test_loader):
-    """
-    Test how well the eoncoder discrimates angles
-    return the average error and std in degrees
-    """
-    model.eval()
-    with torch.no_grad():
-        for data, _ in test_loader:
-            
-
-            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
-            data = torch.from_numpy(data)
-            targets = torch.from_numpy(targets)
-            angles = torch.from_numpy(angles)
-            angles = angles.view(angles.size(0), 1)
-            
-            #Get Feature vector for original and tranformed image
-            
-            x=model.encoder(data) #Feature vector of data
-            y=model.encoder(targets) #Feature vector of targets
-
-            #Compare Angles            
-            x=x.view(x.shape[0],-1) # collapse 3D tensor to 2D tensor 
-            y=y.view(y.shape[0],-1) # collapse 3D tensor to 2D tensor
-           
-
-            #Number of features
-            total_dims=x.shape[1]
-            #Batch size
-            batch_size=x.shape[0]
-            angles_estimate=torch.zeros(batch_size,1)
-            #Number of features penalised
-            ndims=round_even(args.prop*total_dims) 
-            print (ndims) 
-            #Loop every 2 dimensions
-            for i in range(0,ndims-1,2):
-                x_i=x[:,i:i+2]      
-                y_i=y[:,i:i+2]
-                #Get dor product for the batcg
-                dot_prod=torch.bmm(x_i.view(batch_size,1,2),y_i.view(batch_size,2,1)).view(batch_size,1)
-
-                #Get euclidean norm
-                x_norm=torch.norm(x_i, p=2, dim=1, keepdim=True)
-                y_norm=torch.norm(y_i, p=2, dim=1, keepdim=True)
-
-                #Get the cosine of the angel for example
-                angles_estimate+=dot_prod/(x_norm*y_norm)
-
-            angles_estimate=torch.acos(angles_estimate/(ndims//2))*180/np.pi # average and in degrees
-            angles_estimate=angles_estimate.cpu()
-            error=angles_estimate.numpy()-(angles.cpu().numpy()*180/np.pi)
-            average_error=abs(error).mean()
-            error_std=error.std(ddof=1)
-
-            import ipdb; ipdb.set_trace()
-
-            break
-
-        
-
-    return average_error,error_std
-
-
-def read_idx(filename):
-    import struct
-    with open(filename, 'rb') as f:
-        zero, data_type, dims = struct.unpack('>HBB', f.read(4))
-        shape = tuple(struct.unpack('>I', f.read(4))[0] for d in range(dims))
-        return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
-
-
-
-class MNISTDadataset(Dataset):
-    def __init__(self,root_dir, digit,transform=None):
-        """
-        Args:
-            digit(int):        MNIST digit
-            root_dir (string): Directory where the ubyte lies
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        file_path =os.path.join(root_dir,'train-images-'+str(digit)+'-ubyte')
-        self.data = read_idx(file_path)/255
-        
-        self.data = torch.Tensor(self.data)
-        self.data =  (self.data).unsqueeze(1)
-        
-        self.transform=transform
-
-    def __len__(self):
-        return self.data.shape[0]
-
-    def __getitem__(self, idx):
-        sample=self.data[idx]
-        
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample
-
-
-def  get_error_per_digit(args,path,model,batch_size, step):
-    """
-    Return plots and csv files with the mean error per MNIST digit in the trainign dataset 
-    for a range of rotation 
-    Args:
-        step (scalar):  rotation step in degrees
-    """
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-
-    device = torch.device("cuda" if use_cuda else "cpu")
-
-    # Set up dataloaders
-    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
-    #Load Dataset for each MNIST digit
-
-    data_loaders={digit:DataLoader (MNISTDadataset('./data/',digit), 
-        batch_size=batch_size, shuffle=False, **kwargs) for digit in range(0,10)}
-
-    #Set up DataFrames
-    #mean_error = pd.DataFrame()
-    mean_abs_error=pd.DataFrame()
-    error_std=pd.DataFrame()
-
-    for digit, data_loader in data_loaders.items():
-        sys.stdout.write('Processing digit {} \n'.format(digit))
-        sys.stdout.flush()
-        results=get_metrics(args,model, data_loader,device, step)
-        #mean_error[digit]=pd.Series(results[0])
-        mean_abs_error[digit]= pd.Series(results[1])
-        error_std[digit]= pd.Series(results[2])
-
-    #mean_error.index=mean_error.index*step
-    mean_abs_error.index=mean_abs_error.index*step
-    error_std.index=error_std.index*step
-
-    #mean_error.to_csv(os.path.join(path, 'mean_error_per.csv')
-    mean_abs_error.to_csv(os.path.join(path,'mean_abs_error_per_digit.csv'))
-    error_std.to_csv(os.path.join(path,'error_std_per_digit.csv'))
-
-        ##Plottin just absolute error
-    with plt.style.context('ggplot'):
-        mean_abs_error.plot(figsize=(9, 8))
-        plt.xlabel('Degrees')
-        plt.ylabel('Average error in degrees')
-        plt.legend(loc="upper left", bbox_to_anchor=[0, 1],
-                   ncol=2, shadow=True, title="Digits", fancybox=True)
-        
-        plt.tick_params(colors='gray', direction='out')
-        plt.savefig(os.path.join(path,'Abs_mean_curves_per_digit.png'))
-        plt.close()
-
-    ##Plotting absoltue error and std
-    with plt.style.context('ggplot'):
-        fig =plt.figure(figsize=(9, 8))
-        ax = fig.add_subplot(111)
-        x=mean_abs_error.index
-        for digit in mean_abs_error.columns:
-            mean=mean_abs_error[digit]
-            std=error_std[digit]
-            line,= ax.plot(x,mean)
-            ax.fill_between(x,mean-std,mean+std,alpha=0.2,facecolor=line.get_color(),edgecolor=line.get_color())
-        
-        ax.set_xlabel('Degrees')
-        ax.set_ylabel('Average error in degrees')
-        ax.legend(loc="upper left", bbox_to_anchor=[0, 1],
-                   ncol=2, shadow=True, title="Digits", fancybox=True)
-        ax.tick_params(colors='gray', direction='out')
-        fig.savefig(os.path.join(path,'Abs_mean_&_std_per_digit.png'))
-        fig.clf()
-
 def main():
 
     # Training settings
     list_of_choices=['mse','abs','L2_norm']
+    list_of_models=['normal', 'MLP']
     
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
@@ -525,6 +353,8 @@ def main():
                         help='rotation range in degrees for training,(Default=180), [-theta,+theta)')
     parser.add_argument('--eval-rotation-range', type=float, default=180, metavar='theta',
                         help='rotation range in degrees for evaluation,(Default=90), [-theta,+theta)')
+    parser.add_argument("--model-type",default='Normal',
+    choices=list_of_models, help='model type (Default=normal)') 
 
 
     args = parser.parse_args()
@@ -567,7 +397,12 @@ def main():
         batch_size=args.test_batch_size_rot, shuffle=True)
 
     # Init model and optimizer
-    model = Autoencoder_Split(args.num_dims)
+
+
+    if args.model_type=='normal'
+        model = Autoencoder_Split(args.num_dims)
+    else:
+        model = Autoencoder_SplitMLP()
 
     writer = SummaryWriter(logging_dir, comment='Split Autoencoder for MNIST')
   
