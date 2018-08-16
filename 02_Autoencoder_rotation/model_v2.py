@@ -96,6 +96,7 @@ class Autoencoder_Split(nn.Module):
 
         output=feature_transformer(Identity_Vector_x, params)
 
+
         #Decoder
         output=self.decoder(output)
 
@@ -136,7 +137,6 @@ class Autoencoder_SplitMLP(nn.Module):
 
         #Return reconstructed image, feature vector of oringial image, feature vector of transformation
         return output, (Identity_Vector_x,Identity_Vector_y),(Transformed_Eucledian_Vector_x,Eucledian_Vector_y)
-
 
 
 class DoubleEncoder(nn.Module):

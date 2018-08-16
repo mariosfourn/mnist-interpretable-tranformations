@@ -132,9 +132,10 @@ def reconstruction_test(args, model, test_loader, epoch,rot_range,path):
 
     model.eval()
     with torch.no_grad():
-        for data, target in test_loader:
+        for data,_ in test_loader:
             # Reshape data: apply multiple angles to the same minibatch, hence
             # repeat
+
             data = data.view(data.size(0), -1)
             data = data.repeat(test_loader.batch_size,1)
             data = data.view(test_loader.batch_size**2,1, 28,28)
@@ -147,7 +148,7 @@ def reconstruction_test(args, model, test_loader, epoch,rot_range,path):
 
 
             # Forward pass
-            output,_,_ = model(data, target, angles)
+            output,_,_ =  model(data, targets,angles*np.pi/180) 
             break
         output = output.cpu()
         save_images(args, path, output, epoch)
@@ -292,20 +293,20 @@ def evaluate_model(args,model,data_loader):
     model.eval()
     with torch.no_grad():
         for data,_ in data_loader:
-            # Reshape data
-            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.relative_rot_range)
+
+            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.train_rotation_range)
             data = torch.from_numpy(data)
             targets = torch.from_numpy(targets)
             angles = torch.from_numpy(angles)
             angles = angles.view(angles.size(0), 1)
 
             # Forward pass
-           
-            output, f_data, f_targets = model(data, targets,angles) #for feature vector
-            loss,reconstruction_loss,penalty_loss=penalised_loss(args,output,targets,f_data,f_targets)
+            output, identity_vectors, eucleidian_vectors= model(data, targets,angles*np.pi/180) 
+           # Get triplet loss
+            losses=triple_loss(args,targets,output, identity_vectors, eucleidian_vectors)
             break
 
-    return reconstruction_loss,penalty_loss
+    return losses[0].item()
  
 
 def main():
@@ -353,8 +354,14 @@ def main():
                         help='rotation range in degrees for training,(Default=180), [-theta,+theta)')
     parser.add_argument('--eval-rotation-range', type=float, default=180, metavar='theta',
                         help='rotation range in degrees for evaluation,(Default=90), [-theta,+theta)')
-    parser.add_argument("--model-type",default='Normal',
+    parser.add_argument("--model-type",default='normal',
     choices=list_of_models, help='model type (Default=normal)') 
+    parser.add_argument('--lr-scheduler', action='store_true', default=False, 
+                        help='set up lernaring rate scheduler (Default off)')
+    parser.add_argument('--patience', type=int, default=3,
+                        help='Number of epochs to wait until learning rate is reduced in plateua (default=3)')
+    parser.add_argument('--threshold', type=float, default=1e-4, metavar='l',
+                        help='ReduceLROnPlateau signifance threshold (Default=1e-4)')
 
 
     args = parser.parse_args()
@@ -410,6 +417,10 @@ def main():
     model.apply(weights_init)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    if args.lr_scheduler:
+        scheduler=optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+            patience=args.patience,verbose=True,threshold=args.threshold)
+
 
     sys.stdout.write('Start training\n')
     sys.stdout.flush()
@@ -464,6 +475,15 @@ def main():
 
             n_iter+=1
 
+            break
+
+        #Evalaute training loss
+        train_loss=evaluate_model(args,model,train_loader_rotation)
+        writer.add_scalar('Training Loss',train_loss,epoch)
+        if args.lr_scheduler: scheduler.step(train_loss)
+
+
+
             #     #Evaluate loss in 1,0000 sample of the traning set
         
             #     recon_loss, pen_loss=evaluate_model(args,device,model,train_loader_rotation)
@@ -478,31 +498,11 @@ def main():
         if epoch % 5==0:
             #Test reconstruction by printing image
             reconstruction_test(args, model,train_loader_recon, epoch, args.eval_rotation_range,logging_dir)
+            save_model(args,model,epoch)
 
 
     #Save model
-    save_model(args,model,epoch)
-    # #Save losses
-    # recon_train_loss=np.array(recon_train_loss)
-    # penalty_train_loss=np.array(penalty_train_loss)
-    # prediction_average_error=np.array(prediction_avarege_error)
-    # prediction_error_std=np.array(prediction_error_std)
-
-    # learning_curves_DataFrame=pd.DataFrame()
-
-    # learning_curves_DataFrame['BCE Training Loss']=recon_train_loss
-    # learning_curves_DataFrame['Penalty Training Loss']=penalty_train_loss
-    # learning_curves_DataFrame['Average Abs error']=prediction_average_error
-    # learning_curves_DataFrame['Error STD']=prediction_error_std
-
-    # learning_curves_DataFrame.index=learning_curves_DataFrame.index*args.store_interval*args.batch_size
-
-    # learning_curves_DataFrame.to_csv(os.path.join(path,'learning_curves.csv'))
-
-    # plot_learning_curve(args,recon_train_loss,penalty_train_loss,prediction_average_error, prediction_error_std,path)
-    # sys.stdout.write('Starting evaluation \n')
-    # sys.stdout.flush()
-    #get_error_per_digit(args,path,model,args.batch_size_eval,args.step)
+    
 
 def convert_to_convetion(input):
     """
@@ -528,13 +528,15 @@ def eval_synthetic_rot_loss(args,model,data_loader):
             targets=torch.from_numpy(targets)
 
             # Forward passes
-            _,f_data=model.encoder(data)
+            f_data=model.encoder(data)
+            if isinstance(f_data, tuple): f_data=f_data[1]
             f_data=f_data.view(f_data.shape[0],-1) #convert 3D vector to 2D
 
             f_data_y= f_data[:,1] #Extract y coordinates
             f_data_x= f_data[:,0] #Extract x coordinate 
 
-            _,f_targets=model.encoder(targets)
+            f_targets=model.encoder(targets)
+            if isinstance(f_targets, tuple): f_targets=f_targets[1]
             f_targets=f_targets.view(f_targets.shape[0],-1) #convert 3D vector to 2D
 
             f_targets_y= f_targets[:,1] #Extract y coordinates
