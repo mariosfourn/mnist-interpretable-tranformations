@@ -399,7 +399,7 @@ def main():
     # Init model and optimizer
 
 
-    if args.model_type=='normal'
+    if args.model_type=='normal':
         model = Autoencoder_Split(args.num_dims)
     else:
         model = Autoencoder_SplitMLP()
@@ -528,13 +528,13 @@ def eval_synthetic_rot_loss(args,model,data_loader):
             targets=torch.from_numpy(targets)
 
             # Forward passes
-            f_data=model.encoder(data)
+            _,f_data=model.encoder(data)
             f_data=f_data.view(f_data.shape[0],-1) #convert 3D vector to 2D
 
             f_data_y= f_data[:,1] #Extract y coordinates
             f_data_x= f_data[:,0] #Extract x coordinate 
 
-            f_targets=model.encoder(targets)
+            _,f_targets=model.encoder(targets)
             f_targets=f_targets.view(f_targets.shape[0],-1) #convert 3D vector to 2D
 
             f_targets_y= f_targets[:,1] #Extract y coordinates

@@ -108,7 +108,7 @@ class Autoencoder_SplitMLP(nn.Module):
     def __init__(self):
         super(Autoencoder_SplitMLP, self).__init__()
 
-        self.num_dims=num_dims
+   
 
         self.encoder=DoubleEncoder()
         self.decoder=Decoder(128)
@@ -141,23 +141,23 @@ class Autoencoder_SplitMLP(nn.Module):
 
 class DoubleEncoder(nn.Module):
     def __init__(self):
-        super( DoubleEncoder, self).__init__()
+        super(DoubleEncoder, self).__init__()
 
         self.encoder=nn.Sequential(Encoder(), nn.RReLU())
-        self.to_vector=nn.Sequential(nn.Linear(192,2),nn.Tanh())
+        self.to_vector=nn.Sequential(nn.Conv2d(192,2,1),nn.Tanh())
         self.to_identity=nn.Conv2d(192,128,1)
 
-        def forward(self,x):
+    def forward(self,x):
 
-            x=self.encoder(x)
+        x=self.encoder(x)
 
-            #Split into 2 parts
+        #Split into 2 parts
 
-            rotation_vector=self.to_vector(x)
+        rotation_vector=self.to_vector(x)
 
-            identity_vector=self.to_identity(x)
+        identity_vector=self.to_identity(x)
 
-            return identity_vector, rotation_vector
+        return identity_vector, rotation_vector
 
 
 class Encoder(nn.Module):
