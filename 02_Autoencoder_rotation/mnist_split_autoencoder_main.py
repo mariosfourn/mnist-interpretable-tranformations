@@ -475,7 +475,6 @@ def main():
 
             n_iter+=1
 
-            break
 
 
         #Evalaute training loss
