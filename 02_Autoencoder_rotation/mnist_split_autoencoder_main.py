@@ -480,7 +480,6 @@ def main():
 
         #Evalaute training loss
         train_loss=evaluate_model(args,model,train_loader_rotation)
-        import ipdb; ipdb.set_trace()
         writer.add_scalar('Training Loss',train_loss,epoch)
         if args.lr_scheduler: scheduler.step(train_loss)
 
