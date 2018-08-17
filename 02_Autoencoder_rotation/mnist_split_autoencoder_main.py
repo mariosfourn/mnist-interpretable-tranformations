@@ -139,7 +139,7 @@ def reconstruction_test(args, model, test_loader, epoch,rot_range,path):
             data = data.view(data.size(0), -1)
             data = data.repeat(test_loader.batch_size,1)
             data = data.view(test_loader.batch_size**2,1, 28,28)
-            target = torch.zeros_like(data)
+            targets= torch.zeros_like(data)
 
             angles = torch.linspace(0, rot_range, steps=test_loader.batch_size)
             angles = angles.view(test_loader.batch_size, 1)
@@ -475,7 +475,6 @@ def main():
 
             n_iter+=1
 
-            break
 
         #Evalaute training loss
         train_loss=evaluate_model(args,model,train_loader_rotation)
@@ -494,7 +493,6 @@ def main():
             #     average, std=rotation_test(args, model, device,train_loader_rotation)
             #     prediction_avarege_error.append(average)
             #     prediction_error_std.append(std)
-        
         if epoch % 5==0:
             #Test reconstruction by printing image
             reconstruction_test(args, model,train_loader_recon, epoch, args.eval_rotation_range,logging_dir)
