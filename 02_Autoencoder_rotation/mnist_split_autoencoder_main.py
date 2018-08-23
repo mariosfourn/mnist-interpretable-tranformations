@@ -351,9 +351,9 @@ def main():
                         help='Number of feature vector dimension to use for rotation estimation (Default=2)')
     parser.add_argument('--init-rot-range',type=float, default=0,
                         help='Upper bound of range in degrees of initial random rotation of digits, (Default=0)')
-    parser.add_argument('--train-rotation-range', type=float, default=180, metavar='theta',
+    parser.add_argument('--train-rotation-range', type=float, default=90, metavar='theta',
                         help='rotation range in degrees for training,(Default=180), [-theta,+theta)')
-    parser.add_argument('--eval-rotation-range', type=float, default=180, metavar='theta',
+    parser.add_argument('--eval-rotation-range', type=float, default=90, metavar='theta',
                         help='rotation range in degrees for evaluation,(Default=90), [-theta,+theta)')
     parser.add_argument("--model-type",default='normal',
     choices=list_of_models, help='model type (Default=normal)') 
