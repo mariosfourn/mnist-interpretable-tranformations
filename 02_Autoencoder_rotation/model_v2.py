@@ -63,7 +63,7 @@ class Autoencoder_Split(nn.Module):
         self.num_dims=num_dims
 
         self.encoder=Encoder()
-        self.decoder=Decoder(192-num_dims)
+        self.decoder=Decoder(192)
 
     def forward(self,x,y,params):
         """
@@ -99,7 +99,7 @@ class Autoencoder_Split(nn.Module):
         #Apply FTL on x
 
         #Return reconstructed image, feature vector of oringial image, feature vector of transformation
-        return output, (Identity_Vector_x,Identity_Vector_y),(Transformed_Eucledian_Vector_x,Eucledian_Vector_y)
+        return output, (Identity_Vector_x,Identity_Vector_y),(Eucledian_Vector_x,Eucledian_Vector_y)
 
 
 class Autoencoder_SplitMLP(nn.Module):
