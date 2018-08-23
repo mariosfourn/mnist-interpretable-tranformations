@@ -276,7 +276,8 @@ def triple_loss(args,targets, output,identity, eucledian):
 
     #3 Idenity loss (L2 distance)
 
-    identity_loss=F.pairwise_distance(x_identity,y_identity, p=2)
+    identity_loss=F.pairwise_distance(x_identity/x_identity.norm(dim=1,keepdim=True)
+        ,y_identity/y_identity(dim=1,keepdim=True), p=2)
     
     identity_loss=identity_loss.mean()
  

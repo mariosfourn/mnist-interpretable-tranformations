@@ -76,10 +76,16 @@ class Autoencoder_Split(nn.Module):
 
         f_y=self.encoder(y) #feature vector for image y [N,192,1,1]
 
-        #Split the feature vector in 2
+        #Apply FTL only on eucledian vector of f_x
 
-        #Images x 
+        f_x[:,:self.num_dims]=feature_transformer(f_x[:,:self.num_dims], params)
 
+        output=feature_transformer(f_x, params)
+        #Decoder
+        output=self.decoder(output)
+
+        
+        #Split vector to orientation and identity 
         Eucledian_Vector_x=f_x[:,:self.num_dims]
 
         Identity_Vector_x=f_x[:,self.num_dims:]
@@ -91,14 +97,6 @@ class Autoencoder_Split(nn.Module):
         Identity_Vector_y=f_y[:,self.num_dims:]
 
         #Apply FTL on x
-
-        Transformed_Eucledian_Vector_x=feature_transformer(Eucledian_Vector_x, params)
-
-        output=feature_transformer(Identity_Vector_x, params)
-
-
-        #Decoder
-        output=self.decoder(output)
 
         #Return reconstructed image, feature vector of oringial image, feature vector of transformation
         return output, (Identity_Vector_x,Identity_Vector_y),(Transformed_Eucledian_Vector_x,Eucledian_Vector_y)
