@@ -21,7 +21,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import Dataset, DataLoader
 from tensorboardX import SummaryWriter
 
-from model_v2 import Autoencoder_Split,Autoencoder_SplitMLP
+from model_v2 import Autoencoder_Split
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -235,7 +235,8 @@ def round_even(x):
 
 
 
-def triple_loss(args,targets, output,identity, eucledian):
+def triple_loss(
+    args,targets, output,identity, eucledian):
     """
     output: [N,1,28,28] tensor
     identity: tuple of 2x [N,192-args.num_dims,1,1 ] tensors
@@ -323,8 +324,8 @@ def main():
                         help='input batch size for reconstruction testing (default: 10)')
     parser.add_argument('--test-batch-size-rot', type=int, default=1000, metavar='N',
                         help='input batch size for rotation disrcimination testing (default: 1,000)')
-    parser.add_argument('--batch-size-eval', type=int, default=100, metavar='N',
-                        help='batch size for evaluation of error on MNSIT digits (default: 100)')
+    parser.add_argument('--batch-size-eval', type=int, default=1000, metavar='N',
+                        help='batch size for evaluation of error on MNSIT digits (default: 1000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N',
                         help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
@@ -355,8 +356,6 @@ def main():
                         help='rotation range in degrees for training,(Default=180), [-theta,+theta)')
     parser.add_argument('--eval-rotation-range', type=float, default=90, metavar='theta',
                         help='rotation range in degrees for evaluation,(Default=90), [-theta,+theta)')
-    parser.add_argument("--model-type",default='normal',
-    choices=list_of_models, help='model type (Default=normal)') 
     parser.add_argument('--lr-scheduler', action='store_true', default=False, 
                         help='set up lernaring rate scheduler (Default off)')
     parser.add_argument('--patience', type=int, default=3,
@@ -406,11 +405,7 @@ def main():
 
     # Init model and optimizer
 
-
-    if args.model_type=='normal':
-        model = Autoencoder_Split(args.num_dims)
-    else:
-        model = Autoencoder_SplitMLP()
+    model = Autoencoder_Split(args.num_dims)
 
     writer = SummaryWriter(logging_dir, comment='Split Autoencoder for MNIST')
   
@@ -438,19 +433,20 @@ def main():
         for batch_idx, (data, _) in enumerate(train_loader):
             model.train()
             # Reshape data
-            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.train_rotation_range)
+            data,targets,angles = rotate_tensor(data.numpy(),
+                                                args.init_rot_range, 
+                                                args.train_rotation_range)
             data = torch.from_numpy(data)
             targets = torch.from_numpy(targets)
             angles = torch.from_numpy(angles)
             angles = angles.view(angles.size(0), 1)
 
             # Forward pass
-            output, identity_vectors, eucleidian_vectors= model(data, targets,angles*np.pi/180) 
+            output, identity_vectors, eucleidian_vectors = model(
+                                                            data, targets,angles*np.pi/180) 
             optimizer.zero_grad()
-            #(output of autoencoder, feature vector of input, feature vector of rotated data)
-            output, f_data, f_targets = model(data, targets,angles) 
 
-           # Get triplet loss
+            #Get triplet loss
             losses=triple_loss(args,targets,output, identity_vectors, eucleidian_vectors)
             # Backprop
             losses[0].backward()

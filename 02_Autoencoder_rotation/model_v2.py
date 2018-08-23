@@ -79,12 +79,10 @@ class Autoencoder_Split(nn.Module):
         #Apply FTL only on eucledian vector of f_x
 
         f_x[:,:self.num_dims]=feature_transformer(f_x[:,:self.num_dims], params)
-
-        output=feature_transformer(f_x, params)
-        #Decoder
-        output=self.decoder(output)
-
         
+        #Decoder
+        output=self.decoder(f_x)
+
         #Split vector to orientation and identity 
         Eucledian_Vector_x=f_x[:,:self.num_dims]
 
@@ -100,62 +98,6 @@ class Autoencoder_Split(nn.Module):
 
         #Return reconstructed image, feature vector of oringial image, feature vector of transformation
         return output, (Identity_Vector_x,Identity_Vector_y),(Eucledian_Vector_x,Eucledian_Vector_y)
-
-
-class Autoencoder_SplitMLP(nn.Module):
-    """Autoencoder with regularisatoon """
-    def __init__(self):
-        super(Autoencoder_SplitMLP, self).__init__()
-
-   
-
-        self.encoder=DoubleEncoder()
-        self.decoder=Decoder(128)
-
-    def forward(self,x,y,params):
-        """
-        Args:
-            x:      untransformed images pytorch tensor
-            y:      transforedm images  pytorch tensor
-            params: rotations
-        """
-
-        Identity_Vector_x, Eucledian_Vector_x=self.encoder(x)
-
-        Identity_Vector_y, Eucledian_Vector_y= self.encoder(y)
-
-        #Apply FTL on x
-
-        Transformed_Eucledian_Vector_x=feature_transformer(Eucledian_Vector_x, params)
-
-        output=feature_transformer(Identity_Vector_x, params)
-
-        #Decoder
-        output=self.decoder(output)
-
-        #Return reconstructed image, feature vector of oringial image, feature vector of transformation
-        return output, (Identity_Vector_x,Identity_Vector_y),(Transformed_Eucledian_Vector_x,Eucledian_Vector_y)
-
-
-class DoubleEncoder(nn.Module):
-    def __init__(self):
-        super(DoubleEncoder, self).__init__()
-
-        self.encoder=nn.Sequential(Encoder(), nn.RReLU())
-        self.to_vector=nn.Sequential(nn.Conv2d(192,2,1),nn.Tanh())
-        self.to_identity=nn.Conv2d(192,128,1)
-
-    def forward(self,x):
-
-        x=self.encoder(x)
-
-        #Split into 2 parts
-
-        rotation_vector=self.to_vector(x)
-
-        identity_vector=self.to_identity(x)
-
-        return identity_vector, rotation_vector
 
 
 class Encoder(nn.Module):
