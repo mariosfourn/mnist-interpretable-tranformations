@@ -29,24 +29,24 @@ def weights_init(m):
          nn.init.xavier_normal_(m.weight)
 
 
-def rotate_tensor_give_angles(input,angles):
-    """
-    Rotates each image by angles and concatinates them in one tenosr
-    Args:
-        input: [N,c,h,w] **numpy** tensor
-        angles: [D,1]
-    Returns:
-        output [N*D,c,h,w] **numpy** tensor
-    """
-    outputs = []
-    for i in range(input.shape[0]):
-        for angle in angles:
-            output = rotate(input[i,...], 180*angle/np.pi, axes=(1,2), reshape=False)
-            outputs.append(output)
-    return np.stack(outputs, 0)
+# def rotate_tensor_give_angles(input,angles):
+#     """
+#     Rotates each image by angles and concatinates them in one tenosr
+#     Args:
+#         input: [N,c,h,w] **numpy** tensor
+#         angles: [D,1]
+#     Returns:
+#         output [N*D,c,h,w] **numpy** tensor
+#     """
+#     outputs = []
+#     for i in range(input.shape[0]):
+#         for angle in angles:
+#             output = rotate(input[i,...], 180*angle/np.pi, axes=(1,2), reshape=False)
+#             outputs.append(output)
+#     return np.stack(outputs, 0)
 
 
-def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
+def rotate_tensor(input,init_rot_range,lower_bound,upper_bound, plot=False):
     """
     Rotate the image
     Args:
@@ -64,7 +64,7 @@ def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
     offset_angles=offset_angles.astype(np.float32)
 
     #Define relative angle
-    relative_angles=np.random.uniform(-relative_rot_range,relative_rot_range,input.shape[0])
+    relative_angles=np.random.uniform(-lower_bound,upper_bound,input.shape[0])
     relative_angles=relative_angles.astype(np.float32)
 
 
@@ -94,7 +94,7 @@ def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
 
             plt.imshow(image, cmap='gray')
             plt.grid(False)
-            plt.title(r'$\theta$={:.1f}'.format(offset_angles[j]*180/np.pi), fontsize=6)
+            plt.title(r'$\theta$={:.1f}'.format(offset_angles[j]), fontsize=6)
             plt.axis('off')
         #Create new figure with rotated
         plt.figure(figsize=(7,7))
@@ -106,7 +106,7 @@ def rotate_tensor(input,init_rot_range,relative_rot_range, plot=False):
                 image=outputs2[j,0]
             plt.imshow(image, cmap='gray')
             plt.axis('off')
-            plt.title(r'$\theta$={:.1f}'.format( (offset_angles[i]+relative_angles[i])*180/np.pi), fontsize=6)
+            plt.title(r'$\Delta\theta$={:.1f}'.format( relative_angles[i]), fontsize=6)
             plt.grid(False)
         plt.tight_layout()      
         plt.show()
@@ -296,7 +296,13 @@ def evaluate_model(args,model,data_loader):
     with torch.no_grad():
         for data,_ in data_loader:
 
-            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.train_rotation_range)
+            data,targets,angles = rotate_tensor(
+                    data.numpy(),
+                    args.init_rot_range,
+                    -args.eval_rotation_range,
+                    +args.eval_rotation_range)
+
+
             data = torch.from_numpy(data)
             targets = torch.from_numpy(targets)
             angles = torch.from_numpy(angles)
@@ -315,15 +321,14 @@ def main():
 
     # Training settings
     list_of_choices=['mse','abs','L2_norm']
-    list_of_models=['normal', 'MLP']
     
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size-recon', type=int, default=10, metavar='N',
                         help='input batch size for reconstruction testing (default: 10)')
-    parser.add_argument('--test-batch-size-rot', type=int, default=1000, metavar='N',
-                        help='input batch size for rotation disrcimination testing (default: 1,000)')
+    parser.add_argument('--test-batch-size-rot', type=int, default=200, metavar='N',
+                        help='input batch size for rotation discrimination testing (default: 200)')
     parser.add_argument('--batch-size-eval', type=int, default=1000, metavar='N',
                         help='batch size for evaluation of error on MNSIT digits (default: 1000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N',
@@ -345,23 +350,25 @@ def main():
     parser.add_argument('--name', type=str, default='',
                         help='name of the run that is added to the output directory')
     parser.add_argument("--loss",dest='loss',default='abs',
-    choices=list_of_choices, help='Decide type of penatly loss [mse or abs] (Default=abs)') 
+    choices=list_of_choices, help='Decide type of penalty loss [mse or abs] (Default=abs)') 
     parser.add_argument('--step',type=int, default=5,
-                        help='Size of step in degrees for evaluation of error at end of traning (Default=5)')
+                        help='Size of step in degrees for evaluation of error at end of training (Default=5)')
     parser.add_argument('--num-dims',type=int, default=2,
                         help='Number of feature vector dimension to use for rotation estimation (Default=2)')
     parser.add_argument('--init-rot-range',type=float, default=0,
                         help='Upper bound of range in degrees of initial random rotation of digits, (Default=0)')
-    parser.add_argument('--train-rotation-range', type=float, default=90, metavar='theta',
-                        help='rotation range in degrees for training,(Default=180), [-theta,+theta)')
+    parser.add_argument('--train-rotation-lower-bound', type=float, default=0, metavar='theta',
+                        help='lower relative rotation bound for training (Default=0)')
+    parser.add_argument('--train-rotation-upper-bound', type=float, default=90, metavar='theta',
+                        help='upper relative rotation bound for training (Default=90)')
     parser.add_argument('--eval-rotation-range', type=float, default=90, metavar='theta',
                         help='rotation range in degrees for evaluation,(Default=90), [-theta,+theta)')
     parser.add_argument('--lr-scheduler', action='store_true', default=False, 
-                        help='set up lernaring rate scheduler (Default off)')
+                        help='set up learning rate scheduler (Default off)')
     parser.add_argument('--patience', type=int, default=3,
-                        help='Number of epochs to wait until learning rate is reduced in plateua (default=3)')
+                        help='Number of epochs to wait until learning rate is reduced in plateau (default=3)')
     parser.add_argument('--threshold', type=float, default=1e-4, metavar='l',
-                        help='ReduceLROnPlateau signifance threshold (Default=1e-4)')
+                        help='ReduceLROnPlateau significance threshold (Default=1e-4)')
 
 
     args = parser.parse_args()
@@ -403,6 +410,12 @@ def main():
                        ])),
         batch_size=args.test_batch_size_rot, shuffle=True)
 
+    train_loader_eval = torch.utils.data.DataLoader(
+        datasets.MNIST('../data', train=True, transform=transforms.Compose([
+                           transforms.ToTensor()
+                       ])),
+        batch_size=args.batch_size_eval, shuffle=True)
+
     # Init model and optimizer
 
     model = Autoencoder_Split(args.num_dims)
@@ -435,7 +448,8 @@ def main():
             # Reshape data
             data,targets,angles = rotate_tensor(data.numpy(),
                                                 args.init_rot_range, 
-                                                args.train_rotation_range)
+                                                args.train_rotation_lower_bound,
+                                                args.train_rotation_upper_bound)
             data = torch.from_numpy(data)
             targets = torch.from_numpy(targets)
             angles = torch.from_numpy(angles)
@@ -475,22 +489,12 @@ def main():
 
 
         #Evalaute training loss
-        train_loss=evaluate_model(args,model,train_loader_rotation)
-        writer.add_scalar('Training Loss',train_loss,epoch)
+        train_loss=evaluate_model(args,model,train_loader_eval)
+        #writer.add_scalar('Training Loss',train_loss,epoch)
+        sys.stdout.write('Training loss:{:.6f} at end of epoch {} \n '.format(train_loss,epoch))
+        sys.stdout.flush()
         if args.lr_scheduler: scheduler.step(train_loss)
 
-
-
-            #     #Evaluate loss in 1,0000 sample of the traning set
-        
-            #     recon_loss, pen_loss=evaluate_model(args,device,model,train_loader_rotation)
-            #     recon_train_loss.append(recon_loss.item())
-            #     penalty_train_loss.append(pen_loss.item())
-
-            #     # Average prediction error in degrees
-            #     average, std=rotation_test(args, model, device,train_loader_rotation)
-            #     prediction_avarege_error.append(average)
-            #     prediction_error_std.append(std)
         if epoch % 5==0:
             #Test reconstruction by printing image
             reconstruction_test(args, model,train_loader_recon, epoch, args.eval_rotation_range,logging_dir)
@@ -519,7 +523,12 @@ def eval_synthetic_rot_loss(args,model,data_loader):
     with torch.no_grad():
         for data,_ in data_loader:
             ## Reshape data
-            data,targets,angles = rotate_tensor(data.numpy(),args.init_rot_range, args.eval_rotation_range)
+            data,targets,angles = rotate_tensor(
+                data.numpy(),
+                args.init_rot_range,
+                -args.eval_rotation_range,
+                +args.eval_rotation_range)
+
             data=torch.from_numpy(data)
             targets=torch.from_numpy(targets)
 
