@@ -46,6 +46,17 @@ def weights_init(m):
 #     return np.stack(outputs, 0)
 
 
+def outer_product(x,y):
+    """
+    Takes two tensors and return outer product 
+
+    x[N,2]
+    y[N,2]
+    """
+
+    return x[:,0]*y[:,1] -x[:,1]*y[:,0]
+
+
 def rotate_tensor(input,init_rot_range,lower_bound,upper_bound, plot=False):
     """
     Rotate the image
@@ -64,7 +75,7 @@ def rotate_tensor(input,init_rot_range,lower_bound,upper_bound, plot=False):
     offset_angles=offset_angles.astype(np.float32)
 
     #Define relative angle
-    relative_angles=np.random.uniform(-lower_bound,upper_bound,input.shape[0])
+    relative_angles=np.random.uniform(lower_bound,upper_bound,input.shape[0])
     relative_angles=relative_angles.astype(np.float32)
 
 
@@ -275,12 +286,19 @@ def triple_loss(
 
     # rotation_loss=eucledian_loss(x_eucledian,y_eucledian)
 
-    #3 Idenity loss (L2 distance)
+    #3 Idenity loss 
 
-    identity_loss=F.pairwise_distance(x_identity/x_identity.norm(dim=1,keepdim=True)
-        ,y_identity/y_identity.norm(dim=1,keepdim=True), p=2)
-    
-    identity_loss=identity_loss.mean()
+    if args.identity_loss=='L2_norm':
+
+        identity_loss=F.pairwise_distance(x_identity/x_identity.norm(dim=1,keepdim=True)
+            ,y_identity/y_identity.norm(dim=1,keepdim=True), p=2).mean()
+
+    else: 
+
+        identity_loss=cosine_similarity(
+            x_identity.view(x_identity.size(0),1,-1),
+            y_identity.view(y_identity.size(0),1,-1)).mean()
+
  
     total_loss=args.alpha*rotation_loss + args.gamma * identity_loss + (1-args.alpha-args.gamma)*recon_loss
 
@@ -321,6 +339,7 @@ def main():
 
     # Training settings
     list_of_choices=['mse','abs','L2_norm']
+    idenity_losses=['L2_norm','cosine']
     
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
@@ -369,7 +388,8 @@ def main():
                         help='Number of epochs to wait until learning rate is reduced in plateau (default=3)')
     parser.add_argument('--threshold', type=float, default=1e-4, metavar='l',
                         help='ReduceLROnPlateau significance threshold (Default=1e-4)')
-
+    parser.add_argument("--identity-loss",default='L2_norm',
+    choices=idenity_losses, help='Identity loss type, choose from L2_norm and cosine (Default=L2_norm)') 
 
     args = parser.parse_args()
 
@@ -481,12 +501,13 @@ def main():
 
             #Store training and test loss
             if batch_idx % args.store_interval==0:
-                error_mean, error_std = eval_synthetic_rot_loss(args, model,train_loader_rotation)
-                writer.add_scalars('Rotation Loss',{'Mean Error': error_mean, 'Error STD:error_std':error_std}, n_iter)
+                atan2, asin = eval_synthetic_rot_loss(args, model,train_loader_rotation)
+                writer.add_scalars('atan2 Loss',{'Mean Error': atan2[0], 'Error STD:error_std':atan2[1]}, n_iter)
+                writer.add_scalars('asin Loss',{'Mean Error': asin[0], 'Error STD:error_std':asin[1]}, n_iter)
 
             n_iter+=1
 
-
+    
 
         #Evalaute training loss
         train_loss=evaluate_model(args,model,train_loader_eval)
@@ -534,31 +555,46 @@ def eval_synthetic_rot_loss(args,model,data_loader):
 
             # Forward passes
             f_data=model.encoder(data)
-            if isinstance(f_data, tuple): f_data=f_data[1]
+            # if isinstance(f_data, tuple): f_data=f_data[1]
             f_data=f_data.view(f_data.shape[0],-1) #convert 3D vector to 2D
 
             f_data_y= f_data[:,1] #Extract y coordinates
             f_data_x= f_data[:,0] #Extract x coordinate 
 
             f_targets=model.encoder(targets)
-            if isinstance(f_targets, tuple): f_targets=f_targets[1]
+            #if isinstance(f_targets, tuple): f_targets=f_targets[1]
             f_targets=f_targets.view(f_targets.shape[0],-1) #convert 3D vector to 2D
 
             f_targets_y= f_targets[:,1] #Extract y coordinates
             f_targets_x= f_targets[:,0] #Extract x coordinate 
 
+
+            #Get error angle on atan2
+
             theta_data=torch.atan2(f_data_y,f_data_x).cpu().numpy()*180/np.pi #Calculate absotulue angel of vector
             theta_targets=torch.atan2(f_targets_y,f_targets_x).cpu().numpy()*180/np.pi #Calculate absotulue angel of vector
 
-            estimated_angle=theta_targets-theta_data
-            
-            estimated_angle=convert_to_convetion(estimated_angle)
 
-            error=estimated_angle-angles
+            #Get error based on asin
+
+            eps=torch.Tensor([1e-8])
+
+            estimated_angle_asin=torch.asin(outer_product(f_targets,f_data)/
+                (torch.max(f_targets.norm(dim=1), eps)*torch.max(f_data.norm(dim=1), eps)))
+
+            estimated_angle_asin=np.degrees(estimated_angle_asin.cpu().numpy())
+
+            estimated_angle_atan2=theta_targets-theta_data
+            
+            estimated_angle_atan2=convert_to_convetion(estimated_angle_atan2)
+
+            error_atan2=convert_to_convetion(estimated_angle_atan2-angles)
+
+            error_asin=convert_to_convetion(estimated_angle_asin-angles)
 
             break
            
-    return  abs(error).mean(), error.std()
+    return  (abs(error_atan2).mean(), error_atan2.std()),(abs(error_asin).mean(), error_asin.std())
 
 def plot_learning_curve(args,recon_loss,penatly_loss,average_error,error_std,path):
 
